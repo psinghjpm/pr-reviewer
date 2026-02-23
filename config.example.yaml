@@ -1,18 +1,30 @@
 # pr-reviewer configuration
 # Copy to config.yaml and fill in your values.
 # Environment variables always override these values.
+#
+# BACKENDS
+# --------
+# backend: api        → calls Anthropic API directly; needs ANTHROPIC_API_KEY
+#                       billed per token (~$0.50-$2 per review on Sonnet)
+#
+# backend: claudecode → no API key needed; prints the /pr-review slash-command
+#                       hint so you can run the review free inside Claude Code
+#                       (Claude Pro / Max subscription)
+#
+# Auto-detection: if ANTHROPIC_API_KEY is set → api backend
+#                 if not set                  → claudecode backend
 
 anthropic:
-  api_key: ""          # or set ANTHROPIC_API_KEY
+  api_key: ""          # or set ANTHROPIC_API_KEY env var (only needed for api backend)
   model: "claude-sonnet-4-6"   # or claude-opus-4-6 for deeper analysis
   max_tool_calls: 60
 
 github:
-  token: ""            # or set GITHUB_TOKEN
+  token: ""            # or set GITHUB_TOKEN env var
 
 bitbucket:
-  username: ""         # or set BITBUCKET_USERNAME
-  app_password: ""     # or set BITBUCKET_APP_PASSWORD
+  username: ""         # or set BITBUCKET_USERNAME env var
+  app_password: ""     # or set BITBUCKET_APP_PASSWORD env var (App Password, not OAuth)
 
 review:
   min_severity_to_post: "LOW"   # CRITICAL | HIGH | MEDIUM | LOW | INFO

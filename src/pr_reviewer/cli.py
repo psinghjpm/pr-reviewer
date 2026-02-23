@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import re
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 import structlog
 import typer
 from rich.console import Console
+from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
@@ -23,6 +25,12 @@ app = typer.Typer(
     help="Agentic PR review tool powered by Claude.",
     add_completion=False,
 )
+
+
+class Backend(str, Enum):
+    API = "api"                    # standalone: calls Anthropic API directly (needs ANTHROPIC_API_KEY)
+    CLAUDECODE = "claudecode"      # inside Claude Code: prints a ready-to-paste prompt (free with Pro)
+
 
 # ---------------------------------------------------------------------------
 # URL parsing helpers
@@ -91,6 +99,37 @@ def _make_bitbucket_adapter(workspace: str, repo: str, config):  # type: ignore[
 
 
 # ---------------------------------------------------------------------------
+# Backend auto-detection
+# ---------------------------------------------------------------------------
+
+def _detect_backend(cfg, explicit_backend: Backend | None) -> Backend:
+    """Pick the best backend based on explicit flag and available credentials."""
+    if explicit_backend is not None:
+        return explicit_backend
+    if cfg.anthropic.api_key:
+        return Backend.API
+    return Backend.CLAUDECODE
+
+
+def _print_claudecode_hint(pr_url: str, dry_run: bool) -> None:
+    """Print instructions for running the review inside Claude Code."""
+    dry_flag = " --dry-run" if dry_run else ""
+    console.print(
+        Panel(
+            f"[bold]No ANTHROPIC_API_KEY found.[/bold] Run this review free with your "
+            f"[cyan]Claude Pro[/cyan] subscription inside [bold]Claude Code[/bold]:\n\n"
+            f"  1. Open Claude Code in any terminal\n"
+            f"  2. Type:  [bold green]/pr-review {pr_url}{dry_flag}[/bold green]\n\n"
+            f"The [cyan]/pr-review[/cyan] slash command is already installed at "
+            f"[dim]~/.claude/commands/pr-review.md[/dim]\n\n"
+            f"[dim]Or set ANTHROPIC_API_KEY to use the standalone API backend.[/dim]",
+            title="💡 Use Claude Code (Free with Pro)",
+            border_style="yellow",
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
 # review command
 # ---------------------------------------------------------------------------
 
@@ -105,9 +144,22 @@ def review(
     model: Optional[str] = typer.Option(None, "--model", help="Claude model override"),
     max_tool_calls: Optional[int] = typer.Option(None, "--max-tool-calls", help="Tool call budget (default 60)"),
     config_path: Optional[str] = typer.Option(None, "--config", help="Path to config.yaml"),
+    backend: Optional[Backend] = typer.Option(
+        None,
+        "--backend",
+        help=(
+            "api = call Anthropic API directly (needs ANTHROPIC_API_KEY). "
+            "claudecode = print /pr-review prompt for use inside Claude Code (free with Pro). "
+            "Auto-detected if not set."
+        ),
+    ),
 ) -> None:
-    """Run an agentic code review on a pull request."""
-    import structlog
+    """Run an agentic code review on a pull request.
+
+    Works in two modes:\n
+      --backend api        Use Anthropic API directly (needs ANTHROPIC_API_KEY)\n
+      --backend claudecode  Print the /pr-review prompt for Claude Code (free with Claude Pro)
+    """
     structlog.configure(
         processors=[
             structlog.stdlib.add_log_level,
@@ -122,6 +174,7 @@ def review(
     resolved_repo: str | None = repo
     resolved_pr: int | None = pr
     resolved_workspace: str | None = workspace
+    resolved_url: str = url or ""
 
     if url:
         gh = _parse_github_url(url)
@@ -135,6 +188,12 @@ def review(
         else:
             console.print(f"[red]Error:[/red] Could not parse PR URL: {url}")
             raise typer.Exit(1)
+    elif resolved_platform and resolved_pr:
+        # Reconstruct URL from parts for claudecode backend
+        if resolved_platform == "github" and resolved_repo:
+            resolved_url = f"https://github.com/{resolved_repo}/pull/{resolved_pr}"
+        elif resolved_platform == "bitbucket" and resolved_workspace and resolved_repo:
+            resolved_url = f"https://bitbucket.org/{resolved_workspace}/{resolved_repo}/pull-requests/{resolved_pr}"
 
     if not resolved_platform:
         console.print("[red]Error:[/red] Specify --url or --platform.")
@@ -143,7 +202,26 @@ def review(
         console.print("[red]Error:[/red] Specify --pr or --url.")
         raise typer.Exit(1)
 
-    # Build adapter
+    # Detect backend
+    effective_backend = _detect_backend(cfg, backend)
+
+    # -----------------------------------------------------------------------
+    # claudecode backend: print the slash-command hint and exit
+    # -----------------------------------------------------------------------
+    if effective_backend == Backend.CLAUDECODE:
+        _print_claudecode_hint(resolved_url or f"<PR URL>", dry_run)
+        raise typer.Exit(0)
+
+    # -----------------------------------------------------------------------
+    # api backend: run the full agentic loop
+    # -----------------------------------------------------------------------
+    api_key = cfg.anthropic.api_key
+    if not api_key:
+        console.print("[red]Error:[/red] ANTHROPIC_API_KEY not set.")
+        console.print("[dim]Tip: run with --backend claudecode to use Claude Code instead (free with Pro)[/dim]")
+        raise typer.Exit(1)
+
+    # Build platform adapter
     if resolved_platform == "github":
         if not resolved_repo:
             console.print("[red]Error:[/red] --repo owner/repo required for GitHub.")
@@ -158,13 +236,8 @@ def review(
         console.print(f"[red]Error:[/red] Unknown platform: {resolved_platform}")
         raise typer.Exit(1)
 
-    # Config overrides from flags
     effective_model = model or cfg.anthropic.model
     effective_max_calls = max_tool_calls or cfg.anthropic.max_tool_calls
-    api_key = cfg.anthropic.api_key
-    if not api_key:
-        console.print("[red]Error:[/red] ANTHROPIC_API_KEY not set.")
-        raise typer.Exit(1)
 
     from pr_reviewer.agent.reviewer import PRReviewer
 
@@ -179,7 +252,8 @@ def review(
     console.print(
         f"[bold]Starting review[/bold] PR #{resolved_pr} "
         f"on [cyan]{resolved_platform}[/cyan] "
-        f"using [cyan]{effective_model}[/cyan]"
+        f"using [cyan]{effective_model}[/cyan] "
+        f"[dim](api backend)[/dim]"
         + (" [yellow](dry run)[/yellow]" if dry_run else "")
     )
 
@@ -193,10 +267,8 @@ def review(
         session = reviewer.review(resolved_pr)
         progress.update(task, description="Posting comments…")
 
-    # Print findings table
     _print_findings_table(session.findings)
 
-    # Post (or dry-run)
     poster = CommentPoster(
         adapter=adapter,
         min_severity=cfg.review.min_severity_to_post,
@@ -269,7 +341,11 @@ def config_init(
         )
     Path(output).write_text(content)
     console.print(f"[green]Created[/green] {output}")
-    console.print("Edit the file to add your API keys.")
+    console.print("Edit the file to add your API keys, or leave blank to use env vars.")
+    console.print(
+        "\n[dim]Tip: ANTHROPIC_API_KEY is only needed for --backend api. "
+        "With Claude Pro, use /pr-review inside Claude Code instead.[/dim]"
+    )
 
 
 if __name__ == "__main__":
