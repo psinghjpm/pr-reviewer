@@ -27,7 +27,12 @@ No API key needed — it uses your Claude Pro subscription.
 /pr-review https://github.com/owner/repo/pull/123 --min-severity HIGH
 ```
 
-The slash command is installed at `~/.claude/commands/pr-review.md`.
+Install the skill files from this repo:
+```bash
+mkdir -p ~/.claude/skills/pr-review
+cp skill/SKILL.md ~/.claude/skills/pr-review/SKILL.md
+cp skill/post_review.py ~/.claude/skills/pr-review/post_review.py
+```
 It supports both GitHub and Bitbucket.
 
 **Requirements:**
