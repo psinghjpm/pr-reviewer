@@ -1,0 +1,21 @@
+diff --git a/src/payment.py b/src/payment.py
+index 1234567..abcdefg 100644
+--- a/src/payment.py
++++ b/src/payment.py
+@@ -10,5 +10,6 @@ def process():
+     data = fetch()
+-    return None
++    result = transform(data)
++    return result
+
+diff --git a/src/new_module.py b/src/new_module.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/new_module.py
+@@ -0,0 +1,5 @@
++"""New module."""
++
++
++def hello():
++    return "hello"

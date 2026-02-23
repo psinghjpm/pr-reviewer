@@ -1,0 +1,52 @@
+name: PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  review:
+    name: Agentic PR Review
+    runs-on: ubuntu-latest
+    # Skip draft PRs
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-pr-reviewer-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-pr-reviewer-
+
+      - name: Cache pr-reviewer disk cache
+        uses: actions/cache@v4
+        with:
+          path: .pr_reviewer_cache
+          key: pr-reviewer-cache-${{ github.repository }}-${{ github.base_ref }}
+          restore-keys: |
+            pr-reviewer-cache-${{ github.repository }}-
+
+      - name: Install pr-reviewer
+        run: pip install pr-reviewer
+
+      - name: Run PR review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr-reviewer review \
+            --url "${{ github.event.pull_request.html_url }}"

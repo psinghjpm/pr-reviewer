@@ -1,0 +1,29 @@
+image: python:3.11
+
+definitions:
+  caches:
+    pip: ~/.cache/pip
+    pr-reviewer: .pr_reviewer_cache
+
+pipelines:
+  pull-requests:
+    '**':
+      - step:
+          name: Agentic PR Review
+          caches:
+            - pip
+            - pr-reviewer
+          script:
+            - pip install pr-reviewer
+            - pr-reviewer review
+                --platform bitbucket
+                --workspace "$BITBUCKET_WORKSPACE"
+                --repo "$BITBUCKET_REPO_SLUG"
+                --pr "$BITBUCKET_PR_ID"
+          # Secrets required (set in Bitbucket repository settings):
+          #   ANTHROPIC_API_KEY
+          #   BITBUCKET_APP_PASSWORD
+          # Auto-provided by Bitbucket Pipelines:
+          #   BITBUCKET_WORKSPACE
+          #   BITBUCKET_REPO_SLUG
+          #   BITBUCKET_PR_ID

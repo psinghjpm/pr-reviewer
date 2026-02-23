@@ -1,0 +1,25 @@
+# pr-reviewer configuration
+# Copy to config.yaml and fill in your values.
+# Environment variables always override these values.
+
+anthropic:
+  api_key: ""          # or set ANTHROPIC_API_KEY
+  model: "claude-sonnet-4-6"   # or claude-opus-4-6 for deeper analysis
+  max_tool_calls: 60
+
+github:
+  token: ""            # or set GITHUB_TOKEN
+
+bitbucket:
+  username: ""         # or set BITBUCKET_USERNAME
+  app_password: ""     # or set BITBUCKET_APP_PASSWORD
+
+review:
+  min_severity_to_post: "LOW"   # CRITICAL | HIGH | MEDIUM | LOW | INFO
+  max_inline_comments: 30
+  max_content_length: 12000     # chars per tool result
+  cache_ttl_seconds: 300        # file content cache TTL
+
+cache:
+  directory: ".pr_reviewer_cache"
+  ttl_seconds: 300
