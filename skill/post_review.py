@@ -190,9 +190,9 @@ def main():
         sys.exit(f"ERROR: Summary file not found: {summary_path}")
     summary = summary_path.read_text(encoding="utf-8")
 
-    # Post
-    inline_count = post_inline_review(gh, owner, repo, pr_number, head_sha, comments, args.dry_run)
+    # Post summary first so it appears above the inline comments in the PR timeline
     summary_ok = post_summary(gh, args.pr_url, summary, args.dry_run)
+    inline_count = post_inline_review(gh, owner, repo, pr_number, head_sha, comments, args.dry_run)
 
     mode = "[dry run]" if args.dry_run else "posted"
     print(f"\n{'[DRY RUN] ' if args.dry_run else ''}✅ PR Review Complete")
