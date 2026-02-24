@@ -1,0 +1,59 @@
+# Reference Job spec — documents the shape that the webhook handler creates.
+# Run a one-off review manually:
+#
+#   PR_URL="https://github.com/owner/repo/pull/42"
+#   kubectl create job pr-review-manual \
+#     --from=job/pr-review-template \   # or apply this file directly
+#     -n pr-reviewer \
+#     --overrides="{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"reviewer\",\"args\":[\"review\",\"--url\",\"$PR_URL\"]}]}}}}"
+#
+# Or apply this file after substituting PR_URL:
+#   export PR_URL="https://github.com/owner/repo/pull/42"
+#   envsubst < deploy/k8s/job-template.yaml | kubectl apply -f -
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pr-review-manual
+  namespace: pr-reviewer
+  labels:
+    app: pr-reviewer
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: pr-reviewer
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: reviewer
+          image: REPLACE_WITH_YOUR_REVIEWER_IMAGE  # e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/pr-reviewer:latest
+          args: ["review", "--url", "${PR_URL}"]
+          env:
+            - name: PR_URL
+              value: "${PR_URL}"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pr-reviewer-secrets
+                  key: ANTHROPIC_API_KEY
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pr-reviewer-secrets
+                  key: GITHUB_TOKEN
+            - name: PR_REVIEWER_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: pr-reviewer-secrets
+                  key: PR_REVIEWER_MODEL
+                  optional: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

@@ -1,0 +1,96 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook-handler
+  namespace: pr-reviewer
+  labels:
+    app: webhook-handler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webhook-handler
+  template:
+    metadata:
+      labels:
+        app: webhook-handler
+    spec:
+      serviceAccountName: webhook-handler
+      containers:
+        - name: webhook-handler
+          image: REPLACE_WITH_YOUR_WEBHOOK_IMAGE  # e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/pr-reviewer-webhook:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: REVIEWER_IMAGE
+              value: "REPLACE_WITH_YOUR_REVIEWER_IMAGE"  # e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/pr-reviewer:latest
+            - name: K8S_NAMESPACE
+              value: "pr-reviewer"
+            - name: K8S_JOB_SECRET_NAME
+              value: "pr-reviewer-secrets"
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: webhook-secrets
+                  key: WEBHOOK_SECRET
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-handler
+  namespace: pr-reviewer
+spec:
+  selector:
+    app: webhook-handler
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
+
+# ---------------------------------------------------------------------------
+# Optional: AWS ALB Ingress (uncomment and fill in your certificate ARN)
+# ---------------------------------------------------------------------------
+# ---
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: webhook-handler
+#   namespace: pr-reviewer
+#   annotations:
+#     kubernetes.io/ingress.class: alb
+#     alb.ingress.kubernetes.io/scheme: internet-facing
+#     alb.ingress.kubernetes.io/target-type: ip
+#     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+#     alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:REGION:ACCOUNT:certificate/CERT_ID"
+# spec:
+#   rules:
+#     - host: pr-reviewer-webhook.example.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: webhook-handler
+#                 port:
+#                   number: 8080
