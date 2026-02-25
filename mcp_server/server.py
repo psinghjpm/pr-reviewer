@@ -51,6 +51,8 @@ def _run(cmd: list[str], cwd: str) -> str:
     result = subprocess.run(
         cmd, cwd=cwd, text=True, capture_output=True, encoding="utf-8", errors="replace"
     )
+    if result.returncode != 0:
+        return ""
     return result.stdout.strip()
 
 
