@@ -2,7 +2,9 @@
 """
 pr-reviewer MCP server — local staged-change context provider.
 
-Exposes one tool:
+Exposes three tools:
+    list_staged_files(workspace_path?)
+    get_recent_commits(workspace_path?, count?)
     get_staged_changes(workspace_path?, include_unstaged?)
 
 The tool reads the local git workspace and returns:
@@ -102,6 +104,27 @@ def list_staged_files(workspace_path: str = ".") -> str:
         lines.append(f"  {change:10s}  {path}")
 
     return "Staged files:\n" + "\n".join(lines)
+
+
+@mcp.tool()
+def get_recent_commits(workspace_path: str = ".", count: int = 10) -> str:
+    """
+    Return the most recent git commits with author, date and message.
+    Useful for understanding the intent behind staged changes.
+
+    Args:
+        workspace_path: Absolute or relative path to the git repository root.
+        count:          Number of commits to return (default 10, max 50).
+    """
+    ws = str(Path(workspace_path).resolve())
+    n = max(1, min(count, 50))
+    log = _run(
+        ["git", "log", f"-{n}", "--pretty=format:%h  %ad  %an  %s", "--date=short"],
+        cwd=ws,
+    )
+    if not log:
+        return "No commits found."
+    return f"Recent {n} commits:\n\n" + log
 
 
 @mcp.tool()
