@@ -24,7 +24,6 @@ Configure in your IDE — see mcp_server/README.md.
 """
 
 import subprocess
-import sys
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -35,7 +34,8 @@ mcp = FastMCP(
         "Provides local git workspace context (staged diff + file contents) "
         "so you can review code changes before they are committed. "
         "Call get_staged_changes, then analyse the returned diff and files "
-        "for bugs, security issues, logic errors, test coverage, and code quality."
+        "for bugs, security issues, logic errors, test coverage, and code quality. "
+        "Use list_staged_files for a quick overview before fetching the full diff."
     ),
 )
 
@@ -75,8 +75,34 @@ def _read_file(workspace: str, rel_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tool
+# Tools
 # ---------------------------------------------------------------------------
+
+@mcp.tool()
+def list_staged_files(workspace_path: str = ".") -> str:
+    """
+    Return a compact list of files that are currently staged (git add-ed)
+    along with their change type (added/modified/deleted/renamed).
+    Use this for a quick overview before calling get_staged_changes.
+
+    Args:
+        workspace_path: Absolute or relative path to the git repository root.
+    """
+    ws = str(Path(workspace_path).resolve())
+    output = _run(["git", "diff", "--cached", "--name-status"], cwd=ws)
+    if not output:
+        return "No staged files. Run `git add` to stage changes."
+
+    lines = []
+    type_label = {"A": "added", "M": "modified", "D": "deleted", "R": "renamed", "C": "copied"}
+    for line in output.splitlines():
+        parts = line.split("\t", 2)
+        change = type_label.get(parts[0][0], parts[0])
+        path = parts[-1]
+        lines.append(f"  {change:10s}  {path}")
+
+    return "Staged files:\n" + "\n".join(lines)
+
 
 @mcp.tool()
 def get_staged_changes(
