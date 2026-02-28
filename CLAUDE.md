@@ -89,7 +89,7 @@ cp skill/post_review.py ~/.claude/skills/pr-review/post_review.py
 
 # Install pr-feedback skill
 mkdir -p ~/.claude/skills/pr-feedback
-cp skill/FEEDBACK_SKILL.md ~/.claude/skills/pr-feedback/FEEDBACK_SKILL.md
+cp skill/FEEDBACK_SKILL.md ~/.claude/skills/pr-feedback/SKILL.md
 ```
 
 Inside Claude Code:
