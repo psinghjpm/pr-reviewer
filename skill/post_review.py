@@ -113,14 +113,6 @@ def compute_metrics(comments: list[dict], diff_text: str, cost_model: dict) -> s
     stats = compute_diff_stats(diff_text)
     total_findings = sum(counts.values())
 
-    # Build finding detail string (omit severities with 0 findings)
-    parts = []
-    for sev, emoji in SEVERITY_EMOJI.items():
-        n = counts.get(sev, 0)
-        if n:
-            parts.append(f"{n} {emoji} {sev.lower()}")
-    finding_detail = " · ".join(parts) if parts else "none"
-
     # Defect prevention value
     prevention_value = (
         counts.get("CRITICAL", 0) * cost_model.get("critical", 0)
@@ -136,14 +128,23 @@ def compute_metrics(comments: list[dict], diff_text: str, cost_model: dict) -> s
     time_value = round(review_hrs * hourly_rate)
     review_hrs_str = f"{review_hrs:.0f}" if review_hrs == int(review_hrs) else f"{review_hrs}"
 
+    rows = (
+        f"| {SEVERITY_EMOJI['CRITICAL']} Critical | {counts['CRITICAL']} |\n"
+        f"| {SEVERITY_EMOJI['HIGH']} High | {counts['HIGH']} |\n"
+        f"| {SEVERITY_EMOJI['MEDIUM']} Medium | {counts['MEDIUM']} |\n"
+        f"| {SEVERITY_EMOJI['LOW']} Low | {counts['LOW']} |\n"
+        f"| {SEVERITY_EMOJI['INFO']} Info | {counts['INFO']} |\n"
+        f"| **Total findings** | **{total_findings}** |\n"
+    )
+
     return (
         "\n\n---\n\n"
-        "## 📊 Review Value Metrics\n\n"
+        "## 📊 Findings & Review Value\n\n"
         "| Metric | Value |\n"
         "|---|---|\n"
         f"| Files reviewed | {stats['files']} |\n"
         f"| Lines of diff | {stats['added']} added / {stats['removed']} removed |\n"
-        f"| Findings | {total_findings} ({finding_detail}) |\n"
+        + rows +
         f"| Avg confidence | {avg_confidence}% |\n"
         f"| **Est. defect prevention value** | **~${prevention_value:,}** |\n"
         f"| **Est. reviewer time saved** | **~{review_hrs_str} hrs (~${time_value:,})** |\n"
@@ -435,6 +436,14 @@ def main() -> None:
     if not summary_path.exists():
         sys.exit(f"ERROR: Summary file not found: {summary_path}")
     summary = summary_path.read_text(encoding="utf-8")
+
+    # ── Strip standalone Findings by Severity section (merged into metrics) ──
+    summary = re.sub(
+        r"\n## Findings by Severity\n.*?(?=\n##|\Z)",
+        "",
+        summary,
+        flags=re.DOTALL,
+    )
 
     # ── Append value metrics to summary (unless suppressed) ──────────────────
     if not args.no_metrics:

@@ -219,15 +219,6 @@ Write the summary markdown to `/tmp/pr_summary.md`.
 ## PR Intent
 {One sentence}
 
-## Findings by Severity
-| Severity | Count |
-|----------|-------|
-| 🚨 CRITICAL | N |
-| 🔴 HIGH | N |
-| 🟡 MEDIUM | N |
-| 🔵 LOW | N |
-| ℹ️ INFO | N |
-
 ## Key Concerns
 - {concern 1}
 
