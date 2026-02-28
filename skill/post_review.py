@@ -13,6 +13,12 @@ Arguments:
     --head-sha    Commit SHA to attach the review to (fetched from gh if omitted)
     --dry-run     Print what would be posted without calling any APIs
 
+API call budget (regardless of comment count):
+    1. gh pr view  — fetch head SHA (skipped if --head-sha supplied)
+    2. gh pr diff  — fetch unified diff to compute per-line positions
+    3. POST /pulls/{pr}/reviews — post ALL inline comments in one batch review
+    4. gh pr comment — post the summary as a top-level PR comment
+
 Comments JSON schema (array of objects):
     [
       {
@@ -30,7 +36,6 @@ Comments JSON schema (array of objects):
 """
 
 import argparse
-import io
 import json
 import re
 import subprocess
@@ -52,6 +57,10 @@ SEVERITY_EMOJI = {
 }
 
 
+# ---------------------------------------------------------------------------
+# URL / metadata helpers
+# ---------------------------------------------------------------------------
+
 def parse_pr_url(url: str) -> tuple[str, str, int]:
     """Parse a GitHub PR URL into (owner, repo, pr_number)."""
     m = re.match(r"https://github\.com/([^/]+)/([^/]+)/pull/(\d+)", url.rstrip("/"))
@@ -61,17 +70,95 @@ def parse_pr_url(url: str) -> tuple[str, str, int]:
     return m.group(1), m.group(2), int(m.group(3))
 
 
-def fetch_head_sha(gh: str, owner: str, repo: str, pr_number: int) -> str:
-    """Fetch the head commit SHA for the PR."""
-    result = subprocess.run(
+def fetch_pr_info(gh: str, owner: str, repo: str, pr_number: int) -> tuple[str, str]:
+    """Fetch (head_sha, diff_text) in two calls."""
+    sha_result = subprocess.run(
         [gh, "pr", "view", f"https://github.com/{owner}/{repo}/pull/{pr_number}",
          "--json", "headRefOid", "--jq", ".headRefOid"],
-        text=True, capture_output=True, encoding="utf-8"
+        text=True, capture_output=True, encoding="utf-8",
     )
-    if result.returncode != 0:
-        sys.exit(f"ERROR: Could not fetch head SHA:\n{result.stderr}")
-    return result.stdout.strip()
+    if sha_result.returncode != 0:
+        sys.exit(f"ERROR: Could not fetch head SHA:\n{sha_result.stderr}")
+    head_sha = sha_result.stdout.strip()
 
+    diff_result = subprocess.run(
+        [gh, "pr", "diff", f"https://github.com/{owner}/{repo}/pull/{pr_number}"],
+        text=True, capture_output=True, encoding="utf-8",
+    )
+    if diff_result.returncode != 0:
+        sys.exit(f"ERROR: Could not fetch PR diff:\n{diff_result.stderr}")
+
+    return head_sha, diff_result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Diff position map
+# ---------------------------------------------------------------------------
+
+def build_position_map(diff_text: str) -> dict[tuple[str, int], int]:
+    """
+    Parse a unified diff and return {(file_path, new_line_number): diff_position}.
+
+    GitHub's batch review API requires `position` — the 1-based line index within
+    each file's diff section, counting from the first @@ hunk header (inclusive).
+    Every hunk header, context line, added line, and deleted line consumes one
+    position. The count resets at each new "diff --git" file header.
+
+    Lines starting with backslash ("no newline at end of file" markers) are skipped
+    — they don't consume a position in the GitHub UI.
+    """
+    positions: dict[tuple[str, int], int] = {}
+    current_file: str | None = None
+    position = 0
+    new_line = 0
+
+    for raw in diff_text.splitlines():
+        # ── File header ──────────────────────────────────────────────────────
+        if raw.startswith("diff --git "):
+            current_file = None
+            position = 0
+            continue
+        if raw.startswith("+++ b/"):
+            current_file = raw[6:].rstrip()
+            position = 0
+            continue
+        if raw.startswith("--- ") or raw.startswith("index ") \
+                or raw.startswith("new file") or raw.startswith("deleted file") \
+                or raw.startswith("Binary "):
+            continue
+
+        if current_file is None:
+            continue
+
+        # ── Hunk header ──────────────────────────────────────────────────────
+        m = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
+        if m:
+            position += 1          # hunk header itself is a position
+            new_line = int(m.group(1))
+            continue
+
+        # ── "No newline" marker — skip, doesn't consume a position ───────────
+        if raw.startswith("\\"):
+            continue
+
+        # ── Diff content lines ───────────────────────────────────────────────
+        position += 1
+        if raw.startswith("+"):
+            positions[(current_file, new_line)] = position
+            new_line += 1
+        elif raw.startswith("-"):
+            pass                   # deleted — old file only, no new_line advance
+        else:
+            # context line (leading space)
+            positions[(current_file, new_line)] = position
+            new_line += 1
+
+    return positions
+
+
+# ---------------------------------------------------------------------------
+# Formatting
+# ---------------------------------------------------------------------------
 
 def format_comment_body(c: dict) -> str:
     """Format a single finding dict into a GitHub review comment body."""
@@ -92,23 +179,55 @@ def format_comment_body(c: dict) -> str:
     return f"{header}\n\n{message}{suggestion_block}{footer}"
 
 
-def post_inline_review(gh: str, owner: str, repo: str, pr_number: int,
-                       head_sha: str, comments: list[dict], dry_run: bool) -> int:
-    """Batch-post all inline comments as a single GitHub review. Returns count posted."""
+# ---------------------------------------------------------------------------
+# Posting
+# ---------------------------------------------------------------------------
+
+def post_inline_review(
+    gh: str,
+    owner: str,
+    repo: str,
+    pr_number: int,
+    head_sha: str,
+    comments: list[dict],
+    position_map: dict[tuple[str, int], int],
+    dry_run: bool,
+) -> int:
+    """
+    Post all inline comments as a SINGLE GitHub review (one API call).
+
+    Each comment's (path, line) is resolved to a diff `position` using the
+    pre-built position_map. Comments that fall outside the diff are skipped
+    with a warning rather than aborting the whole review.
+    """
     formatted = []
+    skipped = []
+
     for c in comments:
+        key = (c["path"], int(c["line"]))
+        pos = position_map.get(key)
+        if pos is None:
+            skipped.append(c)
+            continue
         formatted.append({
             "path": c["path"],
-            "line": c["line"],
-            "side": "RIGHT",
+            "position": pos,
             "body": format_comment_body(c),
         })
 
+    if skipped:
+        paths = ", ".join(f"{s['path']}:{s['line']}" for s in skipped)
+        print(f"  ⚠️  {len(skipped)} comment(s) not in diff (skipped): {paths}")
+
     if dry_run:
-        print(f"\n[DRY RUN] Would post {len(formatted)} inline comments:")
+        print(f"\n[DRY RUN] Would post {len(formatted)} inline comment(s) in 1 review call:")
         for f in formatted:
-            print(f"  {f['path']}:{f['line']} — {f['body'][:80].splitlines()[0]}")
+            print(f"  pos={f['position']:3}  {f['path']} — {f['body'][:80].splitlines()[0]}")
         return len(formatted)
+
+    if not formatted:
+        print("  ℹ️  No in-diff comments to post.")
+        return 0
 
     payload = {
         "commit_id": head_sha,
@@ -121,21 +240,24 @@ def post_inline_review(gh: str, owner: str, repo: str, pr_number: int,
         [gh, "api", f"repos/{owner}/{repo}/pulls/{pr_number}/reviews",
          "--method", "POST", "--input", "-"],
         input=json.dumps(payload),
-        text=True, capture_output=True, encoding="utf-8"
+        text=True, capture_output=True, encoding="utf-8",
     )
 
     if result.returncode != 0:
         print(f"❌ Failed to post inline review:\n{result.stderr[:2000]}", file=sys.stderr)
         return 0
 
+    # The creation endpoint returns the review object, NOT the comments array.
+    # Trust that all submitted comments landed; verify via review ID if needed.
     data = json.loads(result.stdout)
-    count = len(data.get("comments", []))
-    print(f"✅ Inline review posted — review ID: {data.get('id')}, comments: {count}")
+    review_id = data.get("id")
+    count = len(formatted)
+    print(f"✅ Inline review posted — review ID: {review_id}, comments: {count}")
     return count
 
 
 def post_summary(gh: str, pr_url: str, summary: str, dry_run: bool) -> bool:
-    """Post the top-level summary comment. Returns True on success."""
+    """Post the top-level summary as a PR comment (one API call). Returns True on success."""
     if dry_run:
         print("\n[DRY RUN] Would post summary comment:")
         print(summary[:300] + ("..." if len(summary) > 300 else ""))
@@ -143,7 +265,7 @@ def post_summary(gh: str, pr_url: str, summary: str, dry_run: bool) -> bool:
 
     result = subprocess.run(
         [gh, "pr", "comment", pr_url, "--body", summary],
-        text=True, capture_output=True, encoding="utf-8"
+        text=True, capture_output=True, encoding="utf-8",
     )
 
     if result.returncode != 0:
@@ -154,46 +276,65 @@ def post_summary(gh: str, pr_url: str, summary: str, dry_run: bool) -> bool:
     return True
 
 
-def main():
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Post a code review (inline comments + summary) to a GitHub PR."
     )
-    parser.add_argument("--pr-url", required=True, help="Full GitHub PR URL")
+    parser.add_argument("--pr-url",   required=True, help="Full GitHub PR URL")
     parser.add_argument("--comments", required=True, help="Path to comments JSON file")
-    parser.add_argument("--summary", required=True, help="Path to summary Markdown file")
-    parser.add_argument("--gh-path", default="gh", help="Path to the gh CLI binary")
-    parser.add_argument("--head-sha", default="", help="Head commit SHA (fetched if omitted)")
-    parser.add_argument("--dry-run", action="store_true", help="Print without posting")
+    parser.add_argument("--summary",  required=True, help="Path to summary Markdown file")
+    parser.add_argument("--gh-path",  default="gh",  help="Path to the gh CLI binary")
+    parser.add_argument("--head-sha", default="",    help="Head commit SHA (fetched if omitted)")
+    parser.add_argument("--dry-run",  action="store_true", help="Print without posting")
     args = parser.parse_args()
 
-    # Resolve gh binary
     gh = args.gh_path
-
-    # Parse PR URL
     owner, repo, pr_number = parse_pr_url(args.pr_url)
     print(f"PR: {owner}/{repo}#{pr_number}")
 
-    # Fetch HEAD SHA if not supplied
-    head_sha = args.head_sha or fetch_head_sha(gh, owner, repo, pr_number)
+    # ── Fetch metadata + diff (1–2 API calls) ───────────────────────────────
+    if args.head_sha:
+        head_sha = args.head_sha
+        diff_result = subprocess.run(
+            [gh, "pr", "diff", args.pr_url],
+            text=True, capture_output=True, encoding="utf-8",
+        )
+        if diff_result.returncode != 0:
+            sys.exit(f"ERROR: Could not fetch PR diff:\n{diff_result.stderr}")
+        diff_text = diff_result.stdout
+    else:
+        head_sha, diff_text = fetch_pr_info(gh, owner, repo, pr_number)
+
     print(f"HEAD SHA: {head_sha[:12]}...")
 
-    # Load comments
+    # ── Build position map from diff (no API call) ───────────────────────────
+    position_map = build_position_map(diff_text)
+    print(f"Diff positions mapped: {len(position_map)} lines across "
+          f"{len({p for p, _ in position_map})} file(s)")
+
+    # ── Load inputs ──────────────────────────────────────────────────────────
     comments_path = Path(args.comments)
     if not comments_path.exists():
         sys.exit(f"ERROR: Comments file not found: {comments_path}")
     comments = json.loads(comments_path.read_text(encoding="utf-8"))
-    print(f"Loaded {len(comments)} comments from {comments_path}")
+    print(f"Loaded {len(comments)} comment(s) from {comments_path}")
 
-    # Load summary
     summary_path = Path(args.summary)
     if not summary_path.exists():
         sys.exit(f"ERROR: Summary file not found: {summary_path}")
     summary = summary_path.read_text(encoding="utf-8")
 
-    # Post summary first so it appears above the inline comments in the PR timeline
-    summary_ok = post_summary(gh, args.pr_url, summary, args.dry_run)
-    inline_count = post_inline_review(gh, owner, repo, pr_number, head_sha, comments, args.dry_run)
+    # ── Post: summary first, then single-batch inline review ─────────────────
+    summary_ok    = post_summary(gh, args.pr_url, summary, args.dry_run)
+    inline_count  = post_inline_review(
+        gh, owner, repo, pr_number, head_sha, comments, position_map, args.dry_run
+    )
 
+    # ── Report ───────────────────────────────────────────────────────────────
     mode = "[dry run]" if args.dry_run else "posted"
     print(f"\n{'[DRY RUN] ' if args.dry_run else ''}✅ PR Review Complete")
     print(f"   PR:              {owner}/{repo}#{pr_number}")
