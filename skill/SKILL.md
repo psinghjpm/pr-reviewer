@@ -40,6 +40,12 @@ Before starting the review, check for stored repo context:
    > 💡 **Tip:** Run `/repo-onboard` to generate repo context for richer,
    > convention-aware reviews.
 
+5. Try to load suppressions:
+   - `cat .pr-reviewer/suppressions.json 2>/dev/null`
+   - If empty, try: `cat ~/.pr-reviewer/contexts/<owner>/<repo>/suppressions.json 2>/dev/null`
+   - If found: parse JSON, filter out entries where `expires_at` is set and `expires_at < today` → store as `ACTIVE_SUPPRESSIONS`
+   - If not found: `ACTIVE_SUPPRESSIONS = []`
+
 ---
 
 ## Phase 1 — Fetch PR Metadata & Diff
@@ -179,6 +185,19 @@ CONFIDENCE: <0.0–1.0>
 - Skip findings that already appear in the existing PR comments (deduplication)
 - Cap at 30 inline findings total; if more exist, include extras only in the summary
 
+**Suppression rules (applied after deduplication):**
+- **NEVER suppress** findings where `severity == CRITICAL` (safety invariant — hard rule)
+- **NEVER suppress** findings where `category == SECURITY` (safety invariant — hard rule)
+- For all other findings, check each against `ACTIVE_SUPPRESSIONS`. A suppression matches when ALL of:
+  1. The finding's message semantically matches the suppression `pattern` (plain-English phrase match)
+  2. If `scope` is set: the finding's file path starts with the suppression `scope`
+  3. If `category` is set: the finding's category equals the suppression `category`
+- If matched: **exclude** the finding from `pr_comments.json`; add to `SUPPRESSED` list:
+  ```json
+  {"finding_summary": "<SEVERITY> [<CATEGORY>] <short message> `<file>`", "suppression_id": "<id>", "reason": "<reason>"}
+  ```
+- If `ACTIVE_SUPPRESSIONS` is empty, skip suppression checks entirely
+
 ---
 
 ## Phase 5 — Post Comments
@@ -221,6 +240,12 @@ Write the summary markdown to `/tmp/pr_summary.md`.
 
 ## Key Concerns
 - {concern 1}
+
+## 🔕 Suppressed Findings ({N})
+<!-- Include this section only when SUPPRESSED is non-empty -->
+| Finding | Suppression ID | Reason |
+|---|---|---|
+| MEDIUM [MAINTAINABILITY] raw JSON.parse… `util/filesystem.ts` | sup-001 | Zod migration in progress |
 
 ## Suggested Test Stubs
 ### `test_name`
@@ -332,6 +357,7 @@ After posting (or dry-running), print a summary to the terminal:
    Platform:        {github|bitbucket}
    Risk level:      {RISK_LEVEL}
    Findings:        {N} total ({CRITICAL} critical, {HIGH} high, {MEDIUM} medium, {LOW} low)
+   Suppressed:      {N} findings matched active suppressions (see summary for details)
    Inline comments: {N} posted (or [dry run])
    Summary:         posted (or [dry run])
 ```

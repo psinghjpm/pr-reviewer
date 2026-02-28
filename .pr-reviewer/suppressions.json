@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "suppressions": [
+    {
+      "id": "sup-001",
+      "pattern": "raw JSON.parse without Zod validation",
+      "category": "MAINTAINABILITY",
+      "scope": "packages/opencode/src/util/",
+      "reason": "Zod migration in progress, tracked in #456",
+      "added_by": "psinghjpm",
+      "added_at": "2026-02-28",
+      "expires_at": null,
+      "source_pr": 2
+    }
+  ]
+}

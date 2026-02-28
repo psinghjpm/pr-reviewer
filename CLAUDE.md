@@ -20,6 +20,7 @@ pr-reviewer/
 ├── skill/
 │   ├── SKILL.md          # Claude Code /pr-review skill prompt (Phase 0 loads repo context)
 │   ├── ONBOARD_SKILL.md  # Claude Code /repo-onboard skill prompt
+│   ├── FEEDBACK_SKILL.md # Claude Code /pr-feedback skill prompt (harvests dismissals → suppressions.json)
 │   └── post_review.py    # Generic GitHub PR comment poster (called by the skill)
 ├── src/pr_reviewer/      # Python package (standalone CLI mode)
 │   ├── cli.py            # Typer CLI entrypoint
@@ -85,6 +86,10 @@ Then in any Claude Code session: `review my staged changes`
 mkdir -p ~/.claude/skills/pr-review
 cp skill/SKILL.md ~/.claude/skills/pr-review/SKILL.md
 cp skill/post_review.py ~/.claude/skills/pr-review/post_review.py
+
+# Install pr-feedback skill
+mkdir -p ~/.claude/skills/pr-feedback
+cp skill/FEEDBACK_SKILL.md ~/.claude/skills/pr-feedback/FEEDBACK_SKILL.md
 ```
 
 Inside Claude Code:
@@ -181,6 +186,81 @@ Once generated, repo context is loaded automatically:
 - `src/pr_reviewer/agent/reviewer.py` — `build_system_prompt(repo_context)` prepends context
 - `RepoContextAgent.generate()` never raises — falls back to a minimal `RepoContext` on error
 - `_parse_response()` strips markdown fences before parsing JSON
+
+## Feedback Loop — Suppressions (Phase 1 + 2)
+
+Prevent pr-reviewer from repeatedly flagging findings that your team has consciously dismissed.
+Two components work together: a `suppressions.json` file (Phase 1) and a `/pr-feedback` skill
+that auto-populates it from PR history (Phase 2).
+
+### suppressions.json schema
+
+```json
+{
+  "version": "1.0",
+  "suppressions": [
+    {
+      "id": "sup-001",
+      "pattern": "raw JSON.parse without Zod validation",
+      "category": "MAINTAINABILITY",
+      "scope": "packages/opencode/src/util/",
+      "reason": "Zod migration in progress, tracked in #456",
+      "added_by": "psinghjpm",
+      "added_at": "2026-02-28",
+      "expires_at": null,
+      "source_pr": 2
+    }
+  ]
+}
+```
+
+**Fields:**
+- `pattern` — plain-English phrase; Claude matches it semantically against each finding message
+- `category` — optional exact match (`BUG`/`LOGIC`/`SECURITY`/etc.); omit to match any category
+- `scope` — file path prefix; omit to match repo-wide
+- `expires_at` — ISO date after which suppression is ignored; `null` = never expires
+- `source_pr` — PR number the dismissal came from (informational)
+
+### Storage locations (same precedence rule as repo_context.json)
+
+| Scope | Path | Notes |
+|---|---|---|
+| Local | `.pr-reviewer/suppressions.json` | Committable; team-shareable |
+| Global | `~/.pr-reviewer/contexts/<owner>/<repo>/suppressions.json` | Per-user default |
+
+### Safety invariants (hard rules — cannot be overridden)
+
+- `severity: CRITICAL` → **NEVER suppressed**
+- `category: SECURITY` → **NEVER suppressed**
+
+### /pr-feedback usage
+
+```bash
+# Harvest dismissed threads from a PR and write suppressions.json
+/pr-feedback https://github.com/owner/repo/pull/123
+
+# Preview candidates without writing
+/pr-feedback https://github.com/owner/repo/pull/123 --dry-run
+
+# Write to a custom path (e.g. team-shared local file)
+/pr-feedback https://github.com/owner/repo/pull/123 --output .pr-reviewer/suppressions.json
+```
+
+A thread is treated as dismissed if ANY of:
+1. GitHub "Resolve conversation" was clicked (`isResolved: true`)
+2. A non-bot reply contains NAI keywords: `NAI`, `not an issue`, `false positive`,
+   `won't fix`, `by design`, `not applicable`, `ignore`, `intentional`, `accepted risk`
+3. The pr-reviewer comment received a 👍 reaction from a non-bot user
+
+### Recommended workflow
+
+```
+1. Run /pr-review → findings posted to PR
+2. Team reviews; dismisses false-positives (resolve, reply "NAI", or 👍)
+3. Run /pr-feedback → suppressions.json auto-populated
+4. Commit suppressions.json (or keep it global)
+5. Next /pr-review → suppressed findings excluded; appear only in 🔕 summary section
+```
 
 ## Standalone CLI (API mode)
 
