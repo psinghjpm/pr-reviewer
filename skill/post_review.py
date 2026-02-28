@@ -461,7 +461,7 @@ def main() -> None:
     print(f"   Inline comments: {inline_count} {mode}")
     print(f"   Summary:         {'ok' if summary_ok else 'FAILED'} {mode}")
 
-    if not args.dry_run and (inline_count == 0 or not summary_ok):
+    if not args.dry_run and not summary_ok:
         sys.exit(1)
 
 
