@@ -56,6 +56,103 @@ SEVERITY_EMOJI = {
     "INFO": "ℹ️",
 }
 
+DEFAULT_COST_MODEL = {
+    "critical":    10_000,
+    "high":         2_500,
+    "medium":         500,
+    "low":            100,
+    "info":             0,
+    "hourly_rate":    200,
+}
+
+
+# ---------------------------------------------------------------------------
+# Metrics helpers
+# ---------------------------------------------------------------------------
+
+def compute_diff_stats(diff_text: str) -> dict:
+    """Count unique files, added lines, and removed lines in a unified diff."""
+    files: set[str] = set()
+    added = removed = 0
+    for line in diff_text.splitlines():
+        if line.startswith("+++ b/"):
+            files.add(line[6:].rstrip())
+        elif line.startswith("+") and not line.startswith("+++"):
+            added += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            removed += 1
+    return {"files": len(files), "added": added, "removed": removed}
+
+
+def estimate_review_hours(diff_stats: dict) -> float:
+    """Estimate equivalent senior-engineer review time from diff size."""
+    total = diff_stats["added"] + diff_stats["removed"]
+    if total < 50:
+        return 1.0
+    if total < 200:
+        return 2.0
+    if total < 500:
+        return 3.0
+    return 4.0
+
+
+def compute_metrics(comments: list[dict], diff_text: str, cost_model: dict) -> str:
+    """Return a markdown metrics section to append to the PR summary."""
+    # Count findings by severity
+    counts: dict[str, int] = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+    confidences: list[int] = []
+    for c in comments:
+        sev = c.get("severity", "INFO").upper()
+        counts[sev] = counts.get(sev, 0) + 1
+        conf = c.get("confidence")
+        if isinstance(conf, (int, float)):
+            confidences.append(int(conf))
+
+    avg_confidence = round(sum(confidences) / len(confidences)) if confidences else 0
+
+    stats = compute_diff_stats(diff_text)
+    total_findings = sum(counts.values())
+
+    # Build finding detail string (omit severities with 0 findings)
+    parts = []
+    for sev, emoji in SEVERITY_EMOJI.items():
+        n = counts.get(sev, 0)
+        if n:
+            parts.append(f"{n} {emoji} {sev.lower()}")
+    finding_detail = " · ".join(parts) if parts else "none"
+
+    # Defect prevention value
+    prevention_value = (
+        counts.get("CRITICAL", 0) * cost_model.get("critical", 0)
+        + counts.get("HIGH", 0) * cost_model.get("high", 0)
+        + counts.get("MEDIUM", 0) * cost_model.get("medium", 0)
+        + counts.get("LOW", 0) * cost_model.get("low", 0)
+        + counts.get("INFO", 0) * cost_model.get("info", 0)
+    )
+
+    # Reviewer time value
+    review_hrs = estimate_review_hours(stats)
+    hourly_rate = cost_model.get("hourly_rate", DEFAULT_COST_MODEL["hourly_rate"])
+    time_value = round(review_hrs * hourly_rate)
+    review_hrs_str = f"{review_hrs:.0f}" if review_hrs == int(review_hrs) else f"{review_hrs}"
+
+    return (
+        "\n\n---\n\n"
+        "## 📊 Review Value Metrics\n\n"
+        "| Metric | Value |\n"
+        "|---|---|\n"
+        f"| Files reviewed | {stats['files']} |\n"
+        f"| Lines of diff | {stats['added']} added / {stats['removed']} removed |\n"
+        f"| Findings | {total_findings} ({finding_detail}) |\n"
+        f"| Avg confidence | {avg_confidence}% |\n"
+        f"| **Est. defect prevention value** | **~${prevention_value:,}** |\n"
+        f"| **Est. reviewer time saved** | **~{review_hrs_str} hrs (~${time_value:,})** |\n"
+        "\n"
+        "<sub>Defect prevention estimates based on IBM/NIST cost-of-defect research "
+        "(fixing in review: ~$150 vs. production: ~$10K–$50K). "
+        "Tune with `--cost-critical`, `--cost-high`, `--cost-medium`, `--cost-low`, `--hourly-rate`.</sub>"
+    )
+
 
 # ---------------------------------------------------------------------------
 # URL / metadata helpers
@@ -287,9 +384,20 @@ def main() -> None:
     parser.add_argument("--pr-url",   required=True, help="Full GitHub PR URL")
     parser.add_argument("--comments", required=True, help="Path to comments JSON file")
     parser.add_argument("--summary",  required=True, help="Path to summary Markdown file")
-    parser.add_argument("--gh-path",  default="gh",  help="Path to the gh CLI binary")
-    parser.add_argument("--head-sha", default="",    help="Head commit SHA (fetched if omitted)")
-    parser.add_argument("--dry-run",  action="store_true", help="Print without posting")
+    parser.add_argument("--gh-path",       default="gh",   help="Path to the gh CLI binary")
+    parser.add_argument("--head-sha",      default="",     help="Head commit SHA (fetched if omitted)")
+    parser.add_argument("--dry-run",       action="store_true", help="Print without posting")
+    parser.add_argument("--no-metrics",    action="store_true", help="Skip appending value metrics to summary")
+    parser.add_argument("--hourly-rate",   type=int, default=DEFAULT_COST_MODEL["hourly_rate"],
+                        help="Senior eng loaded hourly cost USD (default: 200)")
+    parser.add_argument("--cost-critical", type=int, default=DEFAULT_COST_MODEL["critical"],
+                        help="Est. prod fix cost per CRITICAL finding (default: 10000)")
+    parser.add_argument("--cost-high",     type=int, default=DEFAULT_COST_MODEL["high"],
+                        help="Est. prod fix cost per HIGH finding (default: 2500)")
+    parser.add_argument("--cost-medium",   type=int, default=DEFAULT_COST_MODEL["medium"],
+                        help="Est. prod fix cost per MEDIUM finding (default: 500)")
+    parser.add_argument("--cost-low",      type=int, default=DEFAULT_COST_MODEL["low"],
+                        help="Est. prod fix cost per LOW finding (default: 100)")
     args = parser.parse_args()
 
     gh = args.gh_path
@@ -327,6 +435,18 @@ def main() -> None:
     if not summary_path.exists():
         sys.exit(f"ERROR: Summary file not found: {summary_path}")
     summary = summary_path.read_text(encoding="utf-8")
+
+    # ── Append value metrics to summary (unless suppressed) ──────────────────
+    if not args.no_metrics:
+        cost_model = {
+            "critical":   args.cost_critical,
+            "high":       args.cost_high,
+            "medium":     args.cost_medium,
+            "low":        args.cost_low,
+            "info":       0,
+            "hourly_rate": args.hourly_rate,
+        }
+        summary += compute_metrics(comments, diff_text, cost_model)
 
     # ── Post: summary first, then single-batch inline review ─────────────────
     summary_ok    = post_summary(gh, args.pr_url, summary, args.dry_run)

@@ -121,6 +121,11 @@ unified diff via `build_position_map()` to resolve every `(file, line_number)` â
 before submitting the batch. Comments that fall outside the diff are skipped with a warning
 rather than aborting the review.
 
+**Value Metrics:** `post_review.py` also appends a **ðŸ“Š Review Value Metrics** section to the
+summary (defect prevention estimate based on IBM/NIST benchmarks + reviewer time saved).
+Disable with `--no-metrics`; tune cost assumptions with `--cost-critical`, `--cost-high`,
+`--cost-medium`, `--cost-low`, `--hourly-rate` (default: 10000 / 2500 / 500 / 100 / $200/hr).
+
 ## Repo Context Onboarding
 
 A one-time onboarding step generates a persistent `RepoContext` JSON file that makes

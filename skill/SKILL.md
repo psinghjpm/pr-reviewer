@@ -276,6 +276,41 @@ the single-comment endpoint. Using `line` causes the API to silently drop every 
 `(file_path, new_line_number) → position` before submitting. Any comment whose line falls
 outside the diff (e.g. unchanged context beyond the hunk) is skipped with a warning.
 
+**📊 Review Value Metrics:** `post_review.py` automatically appends a **Review Value Metrics**
+section to the summary before posting, estimating defect prevention value and reviewer time
+saved based on IBM/NIST cost-of-defect research. Example output:
+
+```markdown
+---
+
+## 📊 Review Value Metrics
+
+| Metric | Value |
+|---|---|
+| Files reviewed | 2 |
+| Lines of diff | 66 added / 3 removed |
+| Findings | 15 (3 🚨 critical · 3 🔴 high · 5 🟡 medium · 3 🔵 low) |
+| Avg confidence | 95% |
+| **Est. defect prevention value** | **~$45,750** |
+| **Est. reviewer time saved** | **~2 hrs (~$400)** |
+
+<sub>Defect prevention estimates based on IBM/NIST cost-of-defect research (fixing in review:
+~$150 vs. production: ~$10K–$50K). Tune with `--cost-critical`, `--cost-high`,
+`--cost-medium`, `--cost-low`, `--hourly-rate`.</sub>
+```
+
+To suppress the metrics section, pass `--no-metrics`. To tune cost assumptions for your
+organisation:
+```bash
+python "$SKILL_DIR/post_review.py" \
+  --pr-url "$PR_URL" \
+  --comments /tmp/pr_comments.json \
+  --summary /tmp/pr_summary.md \
+  --cost-critical 50000 \
+  --cost-high 5000 \
+  --hourly-rate 300
+```
+
 ### Bitbucket fallback (no post_review.py support yet)
 For each finding:
 ```bash
