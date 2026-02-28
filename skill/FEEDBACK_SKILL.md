@@ -81,14 +81,9 @@ If no comment in the thread contains `🤖 pr-reviewer`, **skip this thread enti
    - `intentional`
    - `accepted risk`
 
-3. **Thumbs-up reaction on the pr-reviewer comment:** Check reactions for the pr-reviewer
-   comment's `databaseId`:
-   ```bash
-   gh api "repos/OWNER/REPO/pulls/comments/COMMENT_ID/reactions" \
-     --jq '[.[] | select(.content == "+1")] | length'
-   ```
-   If the count is ≥ 1, the thread is dismissed.
-   (Only fetch reactions for threads that have a pr-reviewer comment — avoids unnecessary API calls.)
+**Note:** 👍 reactions are intentionally NOT treated as a dismissal signal. A thumbs-up on
+a finding more naturally means "good catch / I agree" — the opposite of dismissal. Only
+explicit resolve or a typed NAI reply carries unambiguous dismissal intent.
 
 ### 2c. Extract dismissal metadata for each dismissed thread
 
@@ -104,16 +99,10 @@ If no comment in the thread contains `🤖 pr-reviewer`, **skip this thread enti
 
 **Dismissal reason** (in priority order):
 - If NAI reply: use the reply text (max 200 chars, strip markdown)
-- If 👍 reaction only: `"acknowledged via 👍 reaction"`
-- If resolved with no reply or reaction: `"resolved without comment"`
+- If resolved with no reply: `"resolved without comment"`
 
 **Dismissed by:**
 - NAI reply → username of the reply author
-- 👍 reaction → fetch reactor username from:
-  ```bash
-  gh api "repos/OWNER/REPO/pulls/comments/COMMENT_ID/reactions" \
-    --jq '[.[] | select(.content == "+1")][0].user.login'
-  ```
 - Resolved only → `"unknown"` (GitHub GraphQL `isResolved` doesn't expose who resolved)
 
 ---
