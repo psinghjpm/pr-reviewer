@@ -16,6 +16,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from pr_reviewer.config import generate_example_config, load_config
+from pr_reviewer.context.repo_context_store import RepoContextStore
 from pr_reviewer.models import Platform, Severity
 from pr_reviewer.output.poster import CommentPoster
 
@@ -39,6 +40,9 @@ class Backend(str, Enum):
 _GITHUB_PR_RE = re.compile(
     r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<pr>\d+)"
 )
+_GITHUB_REPO_RE = re.compile(
+    r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
+)
 _BITBUCKET_PR_RE = re.compile(
     r"https://bitbucket\.org/(?P<workspace>[^/]+)/(?P<repo>[^/]+)/pull-requests/(?P<pr>\d+)"
 )
@@ -48,6 +52,14 @@ def _parse_github_url(url: str) -> tuple[str, int] | None:
     m = _GITHUB_PR_RE.match(url)
     if m:
         return f"{m['owner']}/{m['repo']}", int(m["pr"])
+    return None
+
+
+def _parse_github_repo_url(url: str) -> str | None:
+    """Parse a GitHub repo URL and return 'owner/repo', or None."""
+    m = _GITHUB_REPO_RE.match(url)
+    if m:
+        return f"{m['owner']}/{m['repo']}"
     return None
 
 
@@ -241,12 +253,26 @@ def review(
 
     from pr_reviewer.agent.reviewer import PRReviewer
 
+    # Auto-load repo context if available
+    repo_context = None
+    if resolved_repo:
+        repo_full_name = resolved_repo
+        repo_context = RepoContextStore.find(
+            repo_full_name=repo_full_name,
+            local_root=Path.cwd(),
+        )
+        if repo_context:
+            console.print(
+                f"[dim]Loaded repo context (generated {repo_context.generated_at})[/dim]"
+            )
+
     reviewer = PRReviewer(
         adapter=adapter,
         api_key=api_key,
         model=effective_model,
         max_tool_calls=effective_max_calls,
         max_content_length=cfg.review.max_content_length,
+        repo_context=repo_context,
     )
 
     console.print(
@@ -315,6 +341,96 @@ def _print_findings_table(findings: list) -> None:  # type: ignore[type-arg]
         )
 
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# onboard command
+# ---------------------------------------------------------------------------
+
+@app.command()
+def onboard(
+    url: str = typer.Argument(help="GitHub repo URL: https://github.com/owner/repo"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Override save path for repo_context.json"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing context file"),
+    config_path: Optional[str] = typer.Option(None, "--config", help="Path to config.yaml"),
+) -> None:
+    """Generate and store repo context for context-aware PR reviews."""
+    cfg = load_config(config_path)
+
+    # Parse URL
+    repo_full_name = _parse_github_repo_url(url)
+    if not repo_full_name:
+        console.print(f"[red]Error:[/red] Could not parse GitHub repo URL: {url}")
+        console.print("[dim]Expected format: https://github.com/owner/repo[/dim]")
+        raise typer.Exit(1)
+
+    api_key = cfg.anthropic.api_key
+    if not api_key:
+        console.print("[red]Error:[/red] ANTHROPIC_API_KEY not set — required for onboard.")
+        raise typer.Exit(1)
+
+    token = cfg.github.token
+    if not token:
+        console.print("[red]Error:[/red] GITHUB_TOKEN not set — required to read repo files.")
+        raise typer.Exit(1)
+
+    save_path = Path(output) if output else RepoContextStore.global_path(repo_full_name)
+
+    if save_path.exists() and not force:
+        console.print(
+            f"[yellow]Context already exists at {save_path}.[/yellow] "
+            "Use [bold]--force[/bold] to overwrite."
+        )
+        raise typer.Exit(0)
+
+    adapter = _make_github_adapter(repo_full_name, cfg)
+
+    from pr_reviewer.context.repo_context_agent import RepoContextAgent
+
+    agent = RepoContextAgent(
+        adapter=adapter,
+        api_key=api_key,
+        repo_full_name=repo_full_name,
+        model=cfg.anthropic.model,
+    )
+
+    console.print(f"[bold]Onboarding[/bold] [cyan]{repo_full_name}[/cyan] …")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Analysing repository…", total=None)
+        context = agent.generate()
+        progress.update(task, description="Saving context…")
+
+    RepoContextStore.save(context, save_path)
+    console.print(f"[green]✓ Repo context saved to {save_path}[/green]")
+
+    # Print a human-readable summary
+    console.print()
+    if context.languages or context.frameworks:
+        stack = ", ".join(context.languages + context.frameworks)
+        console.print(f"  [bold]Tech Stack:[/bold]       {stack}")
+    if context.build_tool:
+        console.print(f"  [bold]Build Tool:[/bold]       {context.build_tool}")
+    if context.architecture_pattern:
+        console.print(f"  [bold]Architecture:[/bold]     {context.architecture_pattern}")
+    if context.test_framework:
+        console.print(f"  [bold]Test Framework:[/bold]   {context.test_framework}")
+    if context.security_sensitive_paths:
+        console.print(f"  [bold]Security Paths:[/bold]   {', '.join(context.security_sensitive_paths)}")
+    if context.review_hints:
+        console.print(f"  [bold]Review Hints:[/bold]     {len(context.review_hints)} captured")
+    console.print()
+    console.print(
+        "[dim]Run [bold]pr-reviewer review --url ...[/bold] to use this context automatically.[/dim]"
+    )
+    console.print(
+        "[dim]Refresh with [bold]pr-reviewer onboard --force[/bold] after significant repo changes.[/dim]"
+    )
 
 
 # ---------------------------------------------------------------------------

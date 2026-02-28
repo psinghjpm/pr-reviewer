@@ -23,6 +23,25 @@ For Bitbucket, parse: `https://bitbucket.org/{WORKSPACE}/{REPO}/pull-requests/{P
 
 ---
 
+## Phase 0 — Load Repo Context (if available)
+
+Before starting the review, check for stored repo context:
+
+1. Try `cat .pr-reviewer/repo_context.json 2>/dev/null`
+2. If empty, derive `<owner>` and `<repo>` from the PR URL and try:
+   `cat ~/.pr-reviewer/contexts/<owner>/<repo>/repo_context.json 2>/dev/null`
+3. If found, parse the JSON. Throughout **all** analysis passes:
+   - Apply `review_hints` — these are known codebase pitfalls; check every changed file
+   - Flag any changed files under `security_sensitive_paths` with at minimum a MEDIUM finding
+   - Check new functions/classes against `naming_conventions`
+   - Verify new tests follow `test_conventions`
+   - Use `architecture_notes` to assess whether the PR fits the established pattern
+4. If not found, append to the review summary:
+   > 💡 **Tip:** Run `/repo-onboard` to generate repo context for richer,
+   > convention-aware reviews.
+
+---
+
 ## Phase 1 — Fetch PR Metadata & Diff
 
 ### GitHub

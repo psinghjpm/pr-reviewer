@@ -11,7 +11,7 @@ import structlog
 
 from pr_reviewer.agent.tool_definitions import AGENT_TOOLS
 from pr_reviewer.agent.tool_executor import ToolExecutor
-from pr_reviewer.models import AgentSession, FileDiff, PRMetadata, PRSummary, Severity, TestStub
+from pr_reviewer.models import AgentSession, FileDiff, PRMetadata, PRSummary, RepoContext, Severity, TestStub
 from pr_reviewer.platforms.base import PlatformAdapter
 from pr_reviewer.utils.diff_parser import diff_summary
 
@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 # System prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = textwrap.dedent("""
+_SYSTEM_PROMPT_BASE = textwrap.dedent("""
 You are an expert code reviewer powered by Claude. You perform deep, context-aware
 pull request reviews that rival CodeRabbit, Qodo, Greptile, and Graphite.
 
@@ -102,6 +102,48 @@ entire review. Output ONLY valid JSON (no markdown fences), with this exact shap
 
 
 # ---------------------------------------------------------------------------
+# System prompt builder
+# ---------------------------------------------------------------------------
+
+
+def build_system_prompt(repo_context: RepoContext | None = None) -> str:
+    """Return the system prompt, optionally prepended with repo context."""
+    if repo_context is None:
+        return _SYSTEM_PROMPT_BASE
+
+    lines = [
+        "## REPOSITORY CONTEXT\n",
+        "Use this throughout all analysis passes to produce convention-aware findings.\n",
+    ]
+    if repo_context.languages or repo_context.frameworks:
+        stack = ", ".join(repo_context.languages + repo_context.frameworks)
+        lines.append(f"**Tech Stack:** {stack}")
+    if repo_context.build_tool:
+        lines.append(f"**Build Tool:** {repo_context.build_tool}")
+    if repo_context.architecture_pattern:
+        notes = f" — {repo_context.architecture_notes}" if repo_context.architecture_notes else ""
+        lines.append(f"**Architecture:** {repo_context.architecture_pattern}{notes}")
+    if repo_context.naming_conventions:
+        lines.append(f"**Naming:** {repo_context.naming_conventions}")
+    if repo_context.error_handling_pattern:
+        lines.append(f"**Error Handling:** {repo_context.error_handling_pattern}")
+    if repo_context.security_sensitive_paths:
+        paths = ", ".join(repo_context.security_sensitive_paths)
+        lines.append(f"**Security-Sensitive Paths:** {paths} ← flag any PR changes here")
+    if repo_context.test_framework:
+        lines.append(f"**Test Framework:** {repo_context.test_framework} | {repo_context.test_structure}")
+    if repo_context.test_conventions:
+        lines.append(f"**Test Conventions:** {', '.join(repo_context.test_conventions)}")
+    if repo_context.review_hints:
+        lines.append("**Review Hints (known pitfalls):**")
+        lines.extend(f"  - {h}" for h in repo_context.review_hints)
+    if repo_context.additional_context:
+        lines.append(f"**Additional Context:** {repo_context.additional_context}")
+
+    return "\n".join(lines) + "\n\n---\n\n" + _SYSTEM_PROMPT_BASE
+
+
+# ---------------------------------------------------------------------------
 # Message builders
 # ---------------------------------------------------------------------------
 
@@ -164,12 +206,14 @@ class PRReviewer:
         model: str = "claude-sonnet-4-6",
         max_tool_calls: int = 60,
         max_content_length: int = 12_000,
+        repo_context: RepoContext | None = None,
     ) -> None:
         self._adapter = adapter
         self._client = anthropic.Anthropic(api_key=api_key)
         self._model = model
         self._max_tool_calls = max_tool_calls
         self._max_content_length = max_content_length
+        self._repo_context = repo_context
 
     def review(self, pr_id: int | str) -> AgentSession:
         """Run the full agentic review for *pr_id*. Returns a completed AgentSession."""
@@ -199,7 +243,7 @@ class PRReviewer:
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=8192,
-                system=SYSTEM_PROMPT,
+                system=build_system_prompt(self._repo_context),
                 tools=AGENT_TOOLS,
                 messages=messages,
             )
@@ -276,7 +320,7 @@ class PRReviewer:
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=4096,
-                system=SYSTEM_PROMPT,
+                system=build_system_prompt(self._repo_context),
                 messages=summary_messages,
             )
             raw = ""

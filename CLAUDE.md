@@ -18,14 +18,16 @@ pr-reviewer/
 │   ├── server.py         # FastMCP server — list_staged_files, get_recent_commits, get_staged_changes
 │   └── README.md         # MCP setup guide (Claude Code, Cline, Roo Code, Copilot)
 ├── skill/
-│   ├── SKILL.md          # Claude Code /pr-review skill prompt
+│   ├── SKILL.md          # Claude Code /pr-review skill prompt (Phase 0 loads repo context)
+│   ├── ONBOARD_SKILL.md  # Claude Code /repo-onboard skill prompt
 │   └── post_review.py    # Generic GitHub PR comment poster (called by the skill)
 ├── src/pr_reviewer/      # Python package (standalone CLI mode)
 │   ├── cli.py            # Typer CLI entrypoint
 │   ├── config.py         # YAML + env-var config (api_key optional)
 │   ├── models.py         # All Pydantic v2 models
 │   ├── agent/            # PRReviewer agentic loop, tool definitions, tool executor
-│   ├── context/          # DependencyTracer, SymbolSearch, RelatedTestFinder, GitHistory
+│   ├── context/          # DependencyTracer, SymbolSearch, RelatedTestFinder, GitHistory,
+│   │                     #   RepoContextAgent, RepoContextStore
 │   ├── output/           # Formatter, Deduplicator, CommentPoster
 │   └── platforms/        # Abstract PlatformAdapter + GitHubAdapter + BitbucketAdapter
 ├── deploy/
@@ -102,6 +104,62 @@ Inside Claude Code:
 ### post_review.py posting order
 Summary is posted **before** inline comments so it appears at the top of the
 PR timeline. (`post_summary()` is called before `post_inline_review()`.)
+
+## Repo Context Onboarding
+
+A one-time onboarding step generates a persistent `RepoContext` JSON file that makes
+every subsequent review convention-aware (naming, architecture, security paths, review hints).
+
+### Storage locations (local takes precedence)
+
+| Scope | Path | Notes |
+|---|---|---|
+| Local | `.pr-reviewer/repo_context.json` | Committable; team-shareable |
+| Global | `~/.pr-reviewer/contexts/<owner>/<repo>/repo_context.json` | Per-user default |
+
+### CLI onboard command
+
+```bash
+# Generate and save to global path
+pr-reviewer onboard https://github.com/owner/repo
+
+# Save to a custom path (e.g. local scope for the whole team)
+pr-reviewer onboard https://github.com/owner/repo --output .pr-reviewer/repo_context.json
+
+# Overwrite existing context after significant repo changes
+pr-reviewer onboard https://github.com/owner/repo --force
+```
+
+Requires: `ANTHROPIC_API_KEY` + `GITHUB_TOKEN`
+
+### Skill onboard (Claude Code)
+
+```bash
+cp skill/ONBOARD_SKILL.md ~/.claude/skills/repo-onboard/ONBOARD_SKILL.md
+```
+
+Inside Claude Code:
+```
+/repo-onboard
+/repo-onboard --force
+/repo-onboard --output ./service-a/.pr-reviewer/repo_context.json
+```
+
+### Auto-load in reviews
+
+Once generated, repo context is loaded automatically:
+- **CLI:** `pr-reviewer review --url ...` checks `.pr-reviewer/repo_context.json` (CWD),
+  then `~/.pr-reviewer/contexts/<owner>/<repo>/repo_context.json`.
+- **Skill:** `/pr-review` Phase 0 tries the same two paths.
+
+### Implementation notes
+
+- `src/pr_reviewer/models.py` — `RepoContext` Pydantic v2 model
+- `src/pr_reviewer/context/repo_context_store.py` — `RepoContextStore` (save/load/find)
+- `src/pr_reviewer/context/repo_context_agent.py` — `RepoContextAgent` (single-shot Claude call)
+- `src/pr_reviewer/agent/reviewer.py` — `build_system_prompt(repo_context)` prepends context
+- `RepoContextAgent.generate()` never raises — falls back to a minimal `RepoContext` on error
+- `_parse_response()` strips markdown fences before parsing JSON
 
 ## Standalone CLI (API mode)
 
