@@ -99,11 +99,27 @@ Inside Claude Code:
 2. Claude fetches full file contents, related test files, existing comments (for dedup)
 3. Claude runs a 5-pass analysis: INTENT → LOGIC/BUGS → SECURITY → QUALITY → TESTS
 4. Claude writes `/tmp/pr_comments.json` and `/tmp/pr_summary.md`
-5. Claude calls `skill/post_review.py` to post summary first, then inline comments
+5. Claude calls `skill/post_review.py` to post summary first, then all inline comments in one batch
 
-### post_review.py posting order
+### post_review.py posting order and API budget
 Summary is posted **before** inline comments so it appears at the top of the
 PR timeline. (`post_summary()` is called before `post_inline_review()`.)
+
+Posting uses exactly **4 API calls** regardless of how many findings there are:
+
+| Call | What | Why |
+|---|---|---|
+| 1 | `gh pr view --json headRefOid` | Fetch HEAD commit SHA |
+| 2 | `gh pr diff` | Fetch unified diff to build line→position map |
+| 3 | `POST /repos/{owner}/{repo}/pulls/{pr}/reviews` | All N inline comments in one batch |
+| 4 | `gh pr comment` | Top-level summary comment |
+
+**Why `position` not `line`:** GitHub's batch review API (`POST /pulls/{pr}/reviews`) requires
+each comment to specify `position` — the 1-based line index within the file's diff hunk — not
+the `line` + `side` fields used by the single-comment endpoint. `post_review.py` parses the
+unified diff via `build_position_map()` to resolve every `(file, line_number)` → `position`
+before submitting the batch. Comments that fall outside the diff are skipped with a warning
+rather than aborting the review.
 
 ## Repo Context Onboarding
 

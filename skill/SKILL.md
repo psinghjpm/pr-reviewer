@@ -262,7 +262,19 @@ python "$SKILL_DIR/post_review.py" \
 # For Bitbucket, fall back to curl as described below.
 ```
 
-`post_review.py` handles: JSON encoding, batching all inline comments into one review API call, the summary post, and all error reporting.
+`post_review.py` handles everything in **4 API calls total** (constant, regardless of the number of findings):
+
+1. `gh pr view --json headRefOid` — fetch HEAD commit SHA (skipped if `--head-sha` supplied)
+2. `gh pr diff` — fetch the unified diff to build a line→position map locally
+3. `POST /repos/{owner}/{repo}/pulls/{pr}/reviews` — submit **all** inline comments in one batch
+4. `gh pr comment` — post the top-level summary
+
+**Why `position` matters:** GitHub's batch review API requires each inline comment to use
+`position` (1-based line offset within the diff hunk), not the `line` + `side` fields used by
+the single-comment endpoint. Using `line` causes the API to silently drop every comment.
+`post_review.py` calls `build_position_map()` internally to parse the diff and resolve
+`(file_path, new_line_number) → position` before submitting. Any comment whose line falls
+outside the diff (e.g. unchanged context beyond the hunk) is skipped with a warning.
 
 ### Bitbucket fallback (no post_review.py support yet)
 For each finding:
