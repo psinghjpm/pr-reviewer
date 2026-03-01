@@ -1,4 +1,4 @@
-# pr-reviewer — Claude Code Context
+# PRGenie — Claude Code Context
 
 ## Project Overview
 
@@ -241,7 +241,7 @@ review context automatically — no skill changes needed to add new providers.
 }
 ```
 
-`findings` entries follow the same severity/category vocabulary as pr-reviewer findings.
+`findings` entries follow the same severity/category vocabulary as PRGenie findings.
 `file` paths must be repo-relative. `url` and `rule_id` are optional but recommended.
 
 ### Adapter usage

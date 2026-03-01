@@ -1,9 +1,9 @@
 ---
 name: pr-feedback
-description: "Harvest dismissed/resolved pr-reviewer comments from a PR and write suppression entries to suppressions.json. Usage: /pr-feedback <PR-URL> [--dry-run] [--output PATH]"
+description: "Harvest dismissed/resolved PRGenie comments from a PR and write suppression entries to suppressions.json. Usage: /pr-feedback <PR-URL> [--dry-run] [--output PATH]"
 ---
 
-Harvest dismissed pr-reviewer findings from: $ARGUMENTS
+Harvest dismissed PRGenie findings from: $ARGUMENTS
 
 ---
 
@@ -60,15 +60,15 @@ Store the full response as `THREADS`.
 
 For each thread in `THREADS.data.repository.pullRequest.reviewThreads.nodes`:
 
-### 2a. Find the pr-reviewer comment
-A comment is a pr-reviewer comment if its `body` contains the string `🤖 pr-reviewer`.
-If no comment in the thread contains `🤖 pr-reviewer`, **skip this thread entirely**.
+### 2a. Find the PRGenie comment
+A comment is a PRGenie comment if its `body` contains the string `🤖 PRGenie`.
+If no comment in the thread contains `🤖 PRGenie`, **skip this thread entirely**.
 
 ### 2b. Classify as dismissed if ANY of:
 
 1. **Resolved:** `isResolved: true`
 
-2. **NAI reply:** Any comment in the thread (other than the pr-reviewer comment itself)
+2. **NAI reply:** Any comment in the thread (other than the PRGenie comment itself)
    contains one of the following phrases (case-insensitive):
    - `NAI`
    - `not an issue`
@@ -87,7 +87,7 @@ explicit resolve or a typed NAI reply carries unambiguous dismissal intent.
 
 ### 2c. Extract dismissal metadata for each dismissed thread
 
-**Finding details** — parse from the pr-reviewer comment body:
+**Finding details** — parse from the PRGenie comment body:
 - `severity`: look for a line/header containing `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `INFO`
   (the comment format uses bold text like `**HIGH**` or emoji markers)
 - `category`: look for `BUG`, `LOGIC`, `SECURITY`, `PERFORMANCE`, `MAINTAINABILITY`,
@@ -191,6 +191,6 @@ For each new suppression added, list:
 
 If no dismissed threads were found, print:
 ```
-ℹ️  No dismissed/resolved pr-reviewer threads found in PR #PR_NUMBER.
+ℹ️  No dismissed/resolved PRGenie threads found in PR #PR_NUMBER.
    Nothing to add to suppressions.json.
 ```

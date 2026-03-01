@@ -272,7 +272,7 @@ def format_comment_body(c: dict) -> str:
         suggestion_block = f"\n\n**Suggestion:** {c['suggestion_text']}"
 
     confidence = c.get("confidence", "")
-    footer = f"\n\n<sub>Confidence: {confidence}% | 🤖 pr-reviewer (Claude Code)</sub>"
+    footer = f"\n\n<sub>Confidence: {confidence}% | 🤖 PRGenie (Claude Code)</sub>"
 
     return f"{header}\n\n{message}{suggestion_block}{footer}"
 
