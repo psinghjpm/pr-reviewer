@@ -25,6 +25,9 @@ htmlcov/
 # Cache
 .pr_reviewer_cache/
 
+# Claude Code
+.claude/
+
 # IDE
 .vscode/
 .idea/
