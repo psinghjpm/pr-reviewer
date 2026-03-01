@@ -1,0 +1,481 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PRGenie — EKS Architecture (draw.io / Lucidchart)
+  ──────────────────────────────────────────────────
+  Import into Lucidchart:  File → Import → Diagrams.net / draw.io
+  Import into draw.io:     File → Import from → Device  (or drag-drop)
+  Edit online:             https://app.diagrams.net
+-->
+<mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1"
+              tooltips="1" connect="1" arrows="1" fold="1"
+              page="1" pageScale="1" pageWidth="2200" pageHeight="1400"
+              math="0" shadow="1">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         TITLE
+    ══════════════════════════════════════════════════════════════════ -->
+    <mxCell id="title" value="PRGenie — EKS Event-Driven Architecture"
+            style="text;html=1;strokeColor=none;fillColor=none;align=center;
+                   verticalAlign=middle;whiteSpace=wrap;rounded=0;
+                   fontSize=22;fontStyle=1;fontColor=#232F3E;"
+            vertex="1" parent="1">
+      <mxGeometry x="500" y="20" width="1200" height="40" as="geometry"/>
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         BOUNDARY: External Systems
+    ══════════════════════════════════════════════════════════════════ -->
+    <mxCell id="ext_box" value="🌐  External Systems"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#fffde7;strokeColor=#f9a825;
+                   verticalAlign=top;align=left;spacingLeft=10;
+                   fontSize=13;fontStyle=1;dashed=1;dashPattern=8 4;
+                   arcSize=4;"
+            vertex="1" parent="1">
+      <mxGeometry x="20" y="80" width="230" height="700" as="geometry"/>
+    </mxCell>
+
+    <!-- GitHub Source -->
+    <mxCell id="gh_src" value="🐙  GitHub.com"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#fff2cc;strokeColor=#d6b656;
+                   fontSize=12;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="45" y="150" width="180" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="gh_src_sub" value="PR opened · updated · reopened&#xa;GitHub sends webhook event"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=10;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="45" y="192" width="180" height="35" as="geometry"/>
+    </mxCell>
+
+    <!-- Anthropic API -->
+    <mxCell id="ant" value="🤖  Anthropic API"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#fff2cc;strokeColor=#d6b656;
+                   fontSize=12;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="45" y="420" width="180" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="ant_sub" value="claude-sonnet-4-6&#xa;5-pass agentic review loop&#xa;multi-turn tool calls"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=10;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="45" y="462" width="180" height="45" as="geometry"/>
+    </mxCell>
+
+    <!-- GitHub API -->
+    <mxCell id="gh_api" value="🐙  GitHub API"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#fff2cc;strokeColor=#d6b656;
+                   fontSize=12;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="45" y="640" width="180" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="gh_api_sub" value="POST /pulls/{pr}/reviews&#xa;(batch inline comments)&#xa;POST /issues/{pr}/comments&#xa;(summary)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=10;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="45" y="682" width="180" height="60" as="geometry"/>
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         BOUNDARY: AWS Cloud
+    ══════════════════════════════════════════════════════════════════ -->
+    <mxCell id="aws_box" value="☁️  AWS Cloud"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#f5f5f5;strokeColor=#232F3E;
+                   verticalAlign=top;align=left;spacingLeft=10;
+                   fontSize=13;fontStyle=1;dashed=0;arcSize=3;"
+            vertex="1" parent="1">
+      <mxGeometry x="280" y="80" width="1900" height="1280" as="geometry"/>
+    </mxCell>
+
+    <!-- ──────────────────────────────────────────────────────────────
+         ALB / Ingress
+    ────────────────────────────────────────────────────────────────── -->
+    <mxCell id="alb" value="🔀  ALB / Ingress"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#dae8fc;strokeColor=#6c8ebf;
+                   fontSize=12;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="310" y="370" width="180" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="alb_sub" value="HTTPS :443  →  /webhook&#xa;TLS termination&#xa;Routes to ClusterIP svc"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=10;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="310" y="412" width="180" height="45" as="geometry"/>
+    </mxCell>
+
+    <!-- ──────────────────────────────────────────────────────────────
+         ECR
+    ────────────────────────────────────────────────────────────────── -->
+    <mxCell id="ecr" value="📦  Amazon ECR"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#e1d5e7;strokeColor=#9673a6;
+                   fontSize=12;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="2010" y="370" width="190" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="ecr_sub" value="pr-reviewer : latest&#xa;pr-reviewer-webhook : latest"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=10;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="2010" y="412" width="190" height="35" as="geometry"/>
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         BOUNDARY: EKS Cluster
+    ══════════════════════════════════════════════════════════════════ -->
+    <mxCell id="eks_box" value="  EKS Cluster"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#e8eaf6;strokeColor=#3949ab;
+                   verticalAlign=top;align=left;spacingLeft=10;
+                   fontSize=12;fontStyle=1;dashed=1;dashPattern=6 3;arcSize=3;"
+            vertex="1" parent="1">
+      <mxGeometry x="530" y="120" width="1440" height="1200" as="geometry"/>
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         BOUNDARY: namespace pr-reviewer
+    ══════════════════════════════════════════════════════════════════ -->
+    <mxCell id="ns_box" value="  namespace: pr-reviewer"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#e8f5e9;strokeColor=#388e3c;
+                   verticalAlign=top;align=left;spacingLeft=10;
+                   fontSize=11;fontStyle=2;dashed=1;dashPattern=4 4;arcSize=3;"
+            vertex="1" parent="1">
+      <mxGeometry x="560" y="160" width="1380" height="1130" as="geometry"/>
+    </mxCell>
+
+    <!-- ──────────────────────────────────────────────────────────────
+         Service
+    ────────────────────────────────────────────────────────────────── -->
+    <mxCell id="svc" value="⚡  Service"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#dae8fc;strokeColor=#6c8ebf;
+                   fontSize=12;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="600" y="330" width="180" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="svc_sub" value="webhook-handler&#xa;ClusterIP : 8080&#xa;Stable in-cluster DNS"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=10;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="600" y="372" width="180" height="45" as="geometry"/>
+    </mxCell>
+
+    <!-- ──────────────────────────────────────────────────────────────
+         Deployment
+    ────────────────────────────────────────────────────────────────── -->
+    <mxCell id="deploy_box" value="Webhook Handler"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#d5e8d4;strokeColor=#82b366;
+                   verticalAlign=top;align=center;
+                   fontSize=11;fontStyle=1;dashed=0;arcSize=5;"
+            vertex="1" parent="1">
+      <mxGeometry x="840" y="220" width="380" height="340" as="geometry"/>
+    </mxCell>
+    <mxCell id="deploy" value="🚀  Deployment  (2 replicas)"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#d5e8d4;strokeColor=#82b366;
+                   fontSize=12;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="860" y="270" width="340" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="deploy_sub"
+            value="Image: pr-reviewer-webhook:latest&#xa;&#xa;① Verify GitHub HMAC signature&#xa;② Filter: opened / synchronize / reopened&#xa;③ Build DNS-safe Job name&#xa;    pr-review-{repo}-{pr}-{unix-ts}&#xa;④ kubernetes-client.BatchV1Api&#xa;    → create_namespaced_job()"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=left;verticalAlign=top;fontSize=10;whiteSpace=wrap;
+                   spacingLeft=8;"
+            vertex="1" parent="1">
+      <mxGeometry x="860" y="314" width="340" height="150" as="geometry"/>
+    </mxCell>
+    <mxCell id="sa" value="👤  ServiceAccount: webhook-handler"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#e3f2fd;strokeColor=#1565c0;
+                   fontSize=10;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="860" y="475" width="340" height="30" as="geometry"/>
+    </mxCell>
+    <mxCell id="sa_sub"
+            value="Role → batch/v1 jobs: create · get · list  (pr-reviewer ns only)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=9;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="860" y="507" width="340" height="20" as="geometry"/>
+    </mxCell>
+
+    <!-- ──────────────────────────────────────────────────────────────
+         Secrets
+    ────────────────────────────────────────────────────────────────── -->
+    <mxCell id="secrets_box" value="Secrets"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#fff8e1;strokeColor=#f9a825;
+                   verticalAlign=top;align=center;
+                   fontSize=11;fontStyle=1;dashed=0;arcSize=5;"
+            vertex="1" parent="1">
+      <mxGeometry x="1290" y="220" width="420" height="340" as="geometry"/>
+    </mxCell>
+    <mxCell id="sec_r" value="🔐  pr-reviewer-secrets"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#ffe6cc;strokeColor=#d79b00;
+                   fontSize=11;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="1310" y="270" width="380" height="35" as="geometry"/>
+    </mxCell>
+    <mxCell id="sec_r_sub"
+            value="ANTHROPIC_API_KEY  (sk-ant-…)&#xa;GITHUB_TOKEN  (ghp_…)&#xa;PR_REVIEWER_MODEL  (optional)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=10;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="1310" y="308" width="380" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="sec_w" value="🔐  webhook-secrets"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#ffe6cc;strokeColor=#d79b00;
+                   fontSize=11;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="1310" y="390" width="380" height="35" as="geometry"/>
+    </mxCell>
+    <mxCell id="sec_w_sub"
+            value="WEBHOOK_SECRET  (GitHub HMAC key)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=10;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="1310" y="428" width="380" height="25" as="geometry"/>
+    </mxCell>
+    <mxCell id="sec_note"
+            value="⚠️  Never logged. Consider External Secrets Operator&#xa;or Sealed Secrets for production key rotation."
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=center;verticalAlign=top;fontSize=9;
+                   fontColor=#b85450;whiteSpace=wrap;"
+            vertex="1" parent="1">
+      <mxGeometry x="1310" y="470" width="380" height="55" as="geometry"/>
+    </mxCell>
+
+    <!-- ──────────────────────────────────────────────────────────────
+         K8s Job
+    ────────────────────────────────────────────────────────────────── -->
+    <mxCell id="job" value="⚙️  K8s Job  (ephemeral — one per PR event)"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#f8cecc;strokeColor=#b85450;
+                   fontSize=12;fontStyle=1;align=center;"
+            vertex="1" parent="1">
+      <mxGeometry x="840" y="680" width="870" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="job_sub"
+            value="Name:      pr-review-{repo-slug}-{pr-number}-{unix-timestamp}&#xa;Image:     pr-reviewer : latest  (from ECR)&#xa;Command:   pr-reviewer review --url $PR_URL&#xa;&#xa;Resources: CPU 100 m → 500 m  ·  RAM 256 Mi → 512 Mi&#xa;Policy:    restartPolicy: Never  ·  backoffLimit: 1&#xa;Cleanup:   ttlSecondsAfterFinished: 3600  (auto-deleted 1 h after completion)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=left;verticalAlign=top;fontSize=10;whiteSpace=wrap;
+                   spacingLeft=12;"
+            vertex="1" parent="1">
+      <mxGeometry x="840" y="724" width="870" height="110" as="geometry"/>
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ARROWS — Primary flow (solid, blue)
+    ══════════════════════════════════════════════════════════════════ -->
+
+    <!-- GitHub → ALB -->
+    <mxCell id="e1" value="POST /webhook&#xa;X-Hub-Signature-256&#xa;X-GitHub-Event: pull_request"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#1565c0;strokeWidth=2;
+                   fontColor=#1565c0;fontSize=9;
+                   entryX=0;entryY=0.5;entryDx=0;entryDy=0;
+                   exitX=1;exitY=0.5;exitDx=0;exitDy=0;"
+            edge="1" source="gh_src" target="alb" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="270" y="170"/>
+          <mxPoint x="270" y="390"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ALB → Service -->
+    <mxCell id="e2" value="HTTPS → HTTP&#xa;port 8080"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#1565c0;strokeWidth=2;
+                   fontColor=#1565c0;fontSize=9;
+                   exitX=1;exitY=0.5;exitDx=0;exitDy=0;
+                   entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+            edge="1" source="alb" target="svc" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- Service → Deployment -->
+    <mxCell id="e3" value="route to pod"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#388e3c;strokeWidth=2;
+                   fontColor=#388e3c;fontSize=9;
+                   exitX=1;exitY=0.5;exitDx=0;exitDy=0;
+                   entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+            edge="1" source="svc" target="deploy" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="820" y="350"/>
+          <mxPoint x="820" y="290"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- Deployment → Job (create) -->
+    <mxCell id="e4" value="BatchV1Api&#xa;create_namespaced_job()"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#b85450;strokeWidth=2.5;
+                   fontColor=#b85450;fontSize=9;fontStyle=1;
+                   exitX=0.5;exitY=1;exitDx=0;exitDy=0;
+                   entryX=0.5;entryY=0;entryDx=0;entryDy=0;"
+            edge="1" source="deploy_box" target="job" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- Job → Anthropic API -->
+    <mxCell id="e5" value="AI analysis&#xa;multi-turn tool calls"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#7b1fa2;strokeWidth=2;
+                   fontColor=#7b1fa2;fontSize=9;
+                   exitX=0;exitY=0.5;exitDx=0;exitDy=0;
+                   entryX=1;entryY=0.5;entryDx=0;entryDy=0;"
+            edge="1" source="job" target="ant" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="730" y="700"/>
+          <mxPoint x="730" y="440"/>
+          <mxPoint x="270" y="440"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- Job → GitHub API (post comments) -->
+    <mxCell id="e6" value="4 API calls:&#xa;① HEAD SHA&#xa;② diff → position map&#xa;③ batch inline comments&#xa;④ summary comment"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#1565c0;strokeWidth=2;
+                   fontColor=#1565c0;fontSize=9;
+                   exitX=0;exitY=0.5;exitDx=0;exitDy=0;
+                   entryX=1;entryY=0.5;entryDx=0;entryDy=0;"
+            edge="1" source="job" target="gh_api" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="720" y="700"/>
+          <mxPoint x="720" y="660"/>
+          <mxPoint x="270" y="660"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ARROWS — Secondary / config (dashed, grey/orange)
+    ══════════════════════════════════════════════════════════════════ -->
+
+    <!-- Secret (reviewer) → Job (env injection) -->
+    <mxCell id="e7" value="ANTHROPIC_API_KEY&#xa;GITHUB_TOKEN&#xa;(env injection)"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#d79b00;strokeWidth=1.5;dashed=1;dashPattern=6 3;
+                   fontColor=#d79b00;fontSize=9;
+                   exitX=0.5;exitY=1;exitDx=0;exitDy=0;
+                   entryX=1;entryY=0.3;entryDx=0;entryDy=0;"
+            edge="1" source="sec_r" target="job" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1500" y="620"/>
+          <mxPoint x="1750" y="620"/>
+          <mxPoint x="1750" y="690"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- Secret (webhook) → Deployment (HMAC key) -->
+    <mxCell id="e8" value="WEBHOOK_SECRET"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#d79b00;strokeWidth=1.5;dashed=1;dashPattern=6 3;
+                   fontColor=#d79b00;fontSize=9;
+                   exitX=0;exitY=0.5;exitDx=0;exitDy=0;
+                   entryX=1;entryY=0.5;entryDx=0;entryDy=0;"
+            edge="1" source="sec_w" target="deploy" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- ECR → Job (image pull) -->
+    <mxCell id="e9" value="imagePull&#xa;pr-reviewer:latest"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#9673a6;strokeWidth=1.5;dashed=1;dashPattern=6 3;
+                   fontColor=#9673a6;fontSize=9;
+                   exitX=0;exitY=0.5;exitDx=0;exitDy=0;
+                   entryX=1;entryY=0.5;entryDx=0;entryDy=0;"
+            edge="1" source="ecr" target="job" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1950" y="390"/>
+          <mxPoint x="1950" y="700"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ECR → Deployment (webhook image pull) -->
+    <mxCell id="e10" value="imagePull&#xa;webhook:latest"
+            style="edgeStyle=orthogonalEdgeStyle;html=1;
+                   strokeColor=#9673a6;strokeWidth=1.5;dashed=1;dashPattern=6 3;
+                   fontColor=#9673a6;fontSize=9;
+                   exitX=0;exitY=0.3;exitDx=0;exitDy=0;
+                   entryX=1;entryY=0.5;entryDx=0;entryDy=0;"
+            edge="1" source="ecr" target="deploy_box" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1960" y="370"/>
+          <mxPoint x="1960" y="300"/>
+          <mxPoint x="1260" y="300"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         LEGEND
+    ══════════════════════════════════════════════════════════════════ -->
+    <mxCell id="legend_box" value="Legend"
+            style="rounded=1;whiteSpace=wrap;html=1;
+                   fillColor=#f5f5f5;strokeColor=#666666;
+                   verticalAlign=top;align=center;
+                   fontSize=11;fontStyle=1;"
+            vertex="1" parent="1">
+      <mxGeometry x="560" y="900" width="560" height="380" as="geometry"/>
+    </mxCell>
+    <mxCell id="leg1" value="──────▶  Primary data flow (request / response)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=left;verticalAlign=middle;fontSize=10;
+                   fontColor=#1565c0;spacingLeft=10;"
+            vertex="1" parent="1">
+      <mxGeometry x="575" y="940" width="520" height="25" as="geometry"/>
+    </mxCell>
+    <mxCell id="leg2" value="- - - - -▶  Configuration injection (env vars, image pull)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=left;verticalAlign=middle;fontSize=10;
+                   fontColor=#d79b00;spacingLeft=10;"
+            vertex="1" parent="1">
+      <mxGeometry x="575" y="970" width="520" height="25" as="geometry"/>
+    </mxCell>
+    <mxCell id="leg3"
+            value="Colour coding:&#xa;  🟡 Yellow  →  External systems (GitHub, Anthropic)&#xa;  🔵 Blue    →  Network / routing components (ALB, Service)&#xa;  🟢 Green   →  Compute / application (Deployment, Job)&#xa;  🟠 Orange  →  Secrets and configuration&#xa;  🟣 Purple  →  Container registry (ECR)&#xa;  🔴 Red     →  Ephemeral job (born and dies with each PR event)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=left;verticalAlign=top;fontSize=10;whiteSpace=wrap;
+                   spacingLeft=10;"
+            vertex="1" parent="1">
+      <mxGeometry x="575" y="1005" width="520" height="160" as="geometry"/>
+    </mxCell>
+    <mxCell id="leg4"
+            value="Security notes:&#xa;  • HMAC verified before any business logic executes&#xa;  • ServiceAccount scoped to batch/v1 jobs in this namespace only&#xa;  • Secrets never logged; injected as env vars into Job pods&#xa;  • Jobs auto-deleted 1 h after completion (ttlSecondsAfterFinished)"
+            style="text;html=1;strokeColor=none;fillColor=none;
+                   align=left;verticalAlign=top;fontSize=10;whiteSpace=wrap;
+                   spacingLeft=10;fontColor=#b85450;"
+            vertex="1" parent="1">
+      <mxGeometry x="575" y="1185" width="520" height="80" as="geometry"/>
+    </mxCell>
+
+  </root>
+</mxGraphModel>
