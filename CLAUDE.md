@@ -45,6 +45,13 @@ pr-reviewer/
 │   ├── unit/             # Pure unit tests (no network)
 │   ├── integration/      # Mock-adapter tests (no network)
 │   └── e2e/              # Live network tests (require RUN_E2E=1)
+├── .pr-reviewer/
+│   ├── suppressions.json          # Team-shared suppression rules
+│   ├── context/                   # Drop-zone for external provider JSON files
+│   └── adapters/
+│       ├── snyk.py                # Snyk Code → context provider schema
+│       ├── sonar.py               # SonarQube/SonarCloud → context provider schema
+│       └── jira.py                # JIRA ticket validation → context provider schema
 ├── config.example.yaml   # All config options with documentation
 ├── pyproject.toml        # Package metadata + dependencies (mcp optional extra)
 └── CLAUDE.md             # This file
@@ -186,6 +193,115 @@ Once generated, repo context is loaded automatically:
 - `src/pr_reviewer/agent/reviewer.py` — `build_system_prompt(repo_context)` prepends context
 - `RepoContextAgent.generate()` never raises — falls back to a minimal `RepoContext` on error
 - `_parse_response()` strips markdown fences before parsing JSON
+
+## External Context Providers
+
+External tools (Snyk, SonarQube, JIRA) plug in via a **file-based drop protocol**:
+each adapter writes a JSON file to `.pr-reviewer/context/` before the review runs.
+`/pr-review` Phase 0 globs that directory and merges all provider findings into the
+review context automatically — no skill changes needed to add new providers.
+
+### Directory layout
+
+```
+.pr-reviewer/
+├── context/             ← drop-zone (gitignored in CI, committable for local debug)
+│   ├── snyk.json        ← written by adapters/snyk.py
+│   ├── sonar.json       ← written by adapters/sonar.py
+│   └── jira.json        ← written by adapters/jira.py
+└── adapters/
+    ├── snyk.py          ← Snyk Code SARIF → context schema
+    ├── sonar.py         ← SonarQube REST API → context schema
+    └── jira.py          ← JIRA ticket validation → context schema
+```
+
+### Context provider schema (all adapters must conform)
+
+```json
+{
+  "source": "<provider>",
+  "version": "1.0",
+  "generated_at": "<ISO timestamp>",
+  "findings": [
+    {
+      "file": "packages/foo/bar.ts",
+      "line": 42,
+      "severity": "HIGH",
+      "category": "SECURITY",
+      "message": "Description of issue",
+      "rule_id": "SNYK-JS-001",
+      "url": "https://..."
+    }
+  ],
+  "summary": {
+    "passed": true,
+    "label": "OK",
+    "critical": 0, "high": 1, "medium": 3, "low": 2
+  }
+}
+```
+
+`findings` entries follow the same severity/category vocabulary as pr-reviewer findings.
+`file` paths must be repo-relative. `url` and `rule_id` are optional but recommended.
+
+### Adapter usage
+
+```bash
+# Snyk — pipe snyk CLI output directly
+snyk code test --json | python .pr-reviewer/adapters/snyk.py
+
+# Snyk — read from a saved file (CI pattern)
+python .pr-reviewer/adapters/snyk.py --input /tmp/snyk.json
+
+# SonarQube / SonarCloud
+SONAR_TOKEN=... python .pr-reviewer/adapters/sonar.py \
+  --url https://sonarcloud.io --project my-org_my-repo
+
+# JIRA ticket validation
+JIRA_TOKEN=... JIRA_USER=me@example.com \
+  python .pr-reviewer/adapters/jira.py \
+  --pr-url https://github.com/owner/repo/pull/123 \
+  --jira-url https://myorg.atlassian.net
+```
+
+### CI integration pattern (GitHub Actions)
+
+```yaml
+- name: Run Snyk
+  run: snyk code test --json | python .pr-reviewer/adapters/snyk.py
+  env:
+    SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+- name: Run SonarQube
+  run: |
+    python .pr-reviewer/adapters/sonar.py \
+      --url ${{ vars.SONAR_URL }} --project ${{ vars.SONAR_PROJECT }}
+  env:
+    SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+- name: PR Review (picks up context automatically)
+  run: /pr-review ${{ github.event.pull_request.html_url }}
+```
+
+### Adding a new provider
+
+1. Write a script that fetches your tool's data and outputs the context provider schema JSON
+2. Drop the output into `.pr-reviewer/context/<your-tool>.json`
+3. Run `/pr-review` — findings appear in the review with `source: <your-tool>` attribution
+
+No changes to `SKILL.md` or any other file needed.
+
+### Environment variables for adapters
+
+| Variable | Adapter | Required |
+|---|---|---|
+| `SNYK_TOKEN` | Snyk CLI (handled by CLI, not the adapter) | For snyk CLI auth |
+| `SONAR_TOKEN` | sonar.py | Yes |
+| `SONAR_URL` | sonar.py | Yes (or `--url`) |
+| `SONAR_PROJECT` | sonar.py | Yes (or `--project`) |
+| `JIRA_TOKEN` | jira.py | Yes |
+| `JIRA_USER` | jira.py | Yes (Atlassian account email) |
+| `JIRA_URL` | jira.py | Yes (or `--jira-url`) |
 
 ## Feedback Loop — Suppressions (Phase 1 + 2)
 
