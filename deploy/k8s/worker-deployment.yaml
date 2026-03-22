@@ -1,0 +1,108 @@
+---
+# Worker Deployment — processes reviews from Redis queue
+# Designed for high-volume enterprise use with HPA scaling
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-worker
+  namespace: pr-reviewer
+  labels:
+    app: review-worker
+spec:
+  replicas: 3  # Base replicas, HPA will scale up/down
+  selector:
+    matchLabels:
+      app: review-worker
+  template:
+    metadata:
+      labels:
+        app: review-worker
+    spec:
+      serviceAccountName: pr-reviewer  # If needed for K8s API access
+      containers:
+        - name: worker
+          image: REPLACE_WITH_YOUR_REVIEWER_IMAGE  # Same image as CLI, different entrypoint
+          command: ["python", "-m", "deploy.worker.worker"]
+          env:
+            # Redis URLs
+            - name: REDIS_URL
+              value: "redis://redis-service.pr-reviewer.svc.cluster.local:6379/0"
+            - name: REDIS_CACHE_URL
+              value: "redis://redis-service.pr-reviewer.svc.cluster.local:6379/1"
+
+            # Worker config
+            - name: WORKER_CONCURRENCY
+              value: "1"  # Single-threaded per pod (scale via replicas)
+            - name: WORKER_SHUTDOWN_TIMEOUT
+              value: "30"
+
+            # API credentials (from Secret)
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pr-reviewer-secrets
+                  key: ANTHROPIC_API_KEY
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pr-reviewer-secrets
+                  key: GITHUB_TOKEN
+            - name: BITBUCKET_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: pr-reviewer-secrets
+                  key: BITBUCKET_USERNAME
+                  optional: true
+            - name: BITBUCKET_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pr-reviewer-secrets
+                  key: BITBUCKET_APP_PASSWORD
+                  optional: true
+
+            # Reviewer config (override defaults via env vars)
+            - name: PR_REVIEWER_MODEL
+              value: "claude-sonnet-4-6"
+            - name: PR_REVIEWER_TEMPERATURE
+              value: "0.0"
+            - name: PR_REVIEWER_MAX_TOOL_CALLS
+              value: "40"
+            - name: PR_REVIEWER_MIN_CONFIDENCE
+              value: "0.8"
+            - name: PR_REVIEWER_MIN_SEVERITY
+              value: "MEDIUM"
+
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m  # Burst to 1 CPU for LLM processing
+              memory: 1Gi
+
+          # Graceful shutdown (SIGTERM handling)
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]  # Allow in-flight reviews to complete
+
+      # Prevent all workers from being evicted at once during node maintenance
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - review-worker
+                topologyKey: kubernetes.io/hostname
+
+      # Tolerate spot instances (if using EKS Spot)
+      tolerations:
+        - key: "node.kubernetes.io/spot"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"

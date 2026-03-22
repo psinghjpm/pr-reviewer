@@ -1,0 +1,128 @@
+---
+# Prometheus ServiceMonitor for webhook metrics
+# Requires Prometheus Operator
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: webhook-handler-metrics
+  namespace: pr-reviewer
+  labels:
+    app: webhook-handler
+spec:
+  selector:
+    matchLabels:
+      app: webhook-handler
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+
+---
+# Prometheus rules for alerting
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pr-reviewer-alerts
+  namespace: pr-reviewer
+spec:
+  groups:
+    - name: pr-reviewer
+      interval: 30s
+      rules:
+        # Queue depth alerts
+        - alert: PRReviewQueueBacklog
+          expr: pr_review_queue_size > 100
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PR review queue backlog ({{ $value }} items)"
+            description: "Queue has been above 100 for 5 minutes. Consider scaling workers."
+
+        - alert: PRReviewQueueCritical
+          expr: pr_review_queue_size > 500
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PR review queue critical ({{ $value }} items)"
+            description: "Queue depth critical. Immediate scaling required."
+
+        # Worker health
+        - alert: NoReviewWorkersAvailable
+          expr: kube_deployment_status_replicas_available{deployment="review-worker"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No review workers available"
+            description: "All review workers are down. PRs will not be reviewed."
+
+        - alert: ReviewWorkerCrashLoop
+          expr: rate(kube_pod_container_status_restarts_total{container="worker"}[15m]) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Review worker crash loop detected"
+            description: "Worker pods restarting frequently ({{ $value }}/min)."
+
+        # API rate limits
+        - alert: GitHubRateLimitApproaching
+          expr: github_rate_limit_remaining < 500
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "GitHub API rate limit approaching"
+            description: "Only {{ $value }} requests remaining. Review slowdown expected."
+
+        - alert: CircuitBreakerOpen
+          expr: circuit_breaker_state{state="open"} > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Circuit breaker open for {{ $labels.breaker }}"
+            description: "API circuit breaker tripped. Reviews blocked."
+
+        # Performance
+        - alert: ReviewDurationHigh
+          expr: histogram_quantile(0.95, rate(review_duration_seconds_bucket[5m])) > 300
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "95th percentile review time > 5 minutes"
+            description: "Reviews taking longer than expected. Check API performance."
+
+        # Cache health
+        - alert: CacheHitRateLow
+          expr: cache_hit_rate < 0.5
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: "Cache hit rate below 50%"
+            description: "Low cache effectiveness. Review cache configuration."
+
+        # Redis health
+        - alert: RedisDown
+          expr: redis_up == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Redis is down"
+            description: "Queue and cache unavailable. All reviews blocked."
+
+        - alert: RedisMemoryHigh
+          expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Redis memory usage > 90%"
+            description: "Redis approaching memory limit. May start evicting data."

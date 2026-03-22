@@ -1,0 +1,95 @@
+---
+# Horizontal Pod Autoscaler for review workers
+# Scales based on CPU + custom queue depth metric
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: review-worker-hpa
+  namespace: pr-reviewer
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: review-worker
+
+  minReplicas: 3      # Minimum workers (always-on capacity)
+  maxReplicas: 50     # Maximum workers (handle spikes)
+
+  # Scale-up: aggressive (handle spikes quickly)
+  # Scale-down: conservative (avoid thrashing)
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60  # Wait 60s before scaling up
+      policies:
+        - type: Percent
+          value: 100  # Double pod count
+          periodSeconds: 60
+        - type: Pods
+          value: 5    # Add 5 pods per minute
+          periodSeconds: 60
+      selectPolicy: Max  # Use the most aggressive policy
+
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+      policies:
+        - type: Percent
+          value: 50   # Remove 50% of pods
+          periodSeconds: 120
+        - type: Pods
+          value: 2    # Remove max 2 pods every 2 min
+          periodSeconds: 120
+      selectPolicy: Min  # Use the most conservative policy
+
+  metrics:
+    # Metric 1: CPU utilization
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # Scale when avg CPU > 70%
+
+    # Metric 2: Memory utilization
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80  # Scale when avg memory > 80%
+
+    # Metric 3: Custom metric — Queue depth (requires Prometheus + Adapter)
+    # Uncomment after setting up Prometheus Adapter
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: pr_review_queue_size
+    #     target:
+    #       type: AverageValue
+    #       averageValue: "10"  # Scale when queue > 10 items per pod
+
+---
+# Alternative: Queue-based scaling with KEDA (event-driven autoscaling)
+# Install KEDA: https://keda.sh/docs/2.12/deploy/
+# This is more powerful for queue-based workloads
+
+# apiVersion: keda.sh/v1alpha1
+# kind: ScaledObject
+# metadata:
+#   name: review-worker-scaler
+#   namespace: pr-reviewer
+# spec:
+#   scaleTargetRef:
+#     name: review-worker
+#   minReplicaCount: 3
+#   maxReplicaCount: 50
+#   pollingInterval: 15  # Check queue every 15s
+#   cooldownPeriod: 300  # Wait 5 min before scaling down
+#   triggers:
+#     # Redis queue length trigger
+#     - type: redis
+#       metadata:
+#         addressFromEnv: REDIS_URL
+#         listName: pr_review:queue  # Redis sorted set (ZCARD)
+#         listLength: "10"  # Scale when queue > 10 items per pod
+#         activationListLength: "5"  # Min queue size to activate scaling

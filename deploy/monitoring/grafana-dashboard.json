@@ -1,0 +1,168 @@
+{
+  "dashboard": {
+    "title": "PR Reviewer - Enterprise Monitoring",
+    "uid": "pr-reviewer-enterprise",
+    "tags": ["pr-reviewer", "code-review"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "Queue Depth",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "pr_review_queue_size",
+            "legendFormat": "Total Queue Size"
+          },
+          {
+            "expr": "pr_review_queue_by_priority{priority=\"CRITICAL\"}",
+            "legendFormat": "CRITICAL"
+          },
+          {
+            "expr": "pr_review_queue_by_priority{priority=\"HIGH\"}",
+            "legendFormat": "HIGH"
+          },
+          {
+            "expr": "pr_review_queue_by_priority{priority=\"NORMAL\"}",
+            "legendFormat": "NORMAL"
+          }
+        ],
+        "yaxes": [{"format": "short", "label": "Queue Items"}]
+      },
+      {
+        "title": "Active Workers",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "kube_deployment_status_replicas_available{deployment=\"review-worker\"}",
+            "legendFormat": "Available Workers"
+          },
+          {
+            "expr": "kube_deployment_spec_replicas{deployment=\"review-worker\"}",
+            "legendFormat": "Desired Workers"
+          }
+        ],
+        "yaxes": [{"format": "short", "label": "Pods"}]
+      },
+      {
+        "title": "Review Throughput",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(reviews_processed_total[5m]) * 60",
+            "legendFormat": "Successful (per min)"
+          },
+          {
+            "expr": "rate(reviews_failed_total[5m]) * 60",
+            "legendFormat": "Failed (per min)"
+          }
+        ],
+        "yaxes": [{"format": "short", "label": "Reviews/min"}]
+      },
+      {
+        "title": "Review Duration (p95)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(review_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(review_duration_seconds_bucket[5m]))",
+            "legendFormat": "p50 (median)"
+          }
+        ],
+        "yaxes": [{"format": "s", "label": "Duration"}]
+      },
+      {
+        "title": "API Rate Limits",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 16, "w": 8, "h": 6},
+        "targets": [
+          {
+            "expr": "github_rate_limit_remaining",
+            "legendFormat": "GitHub Remaining"
+          },
+          {
+            "expr": "claude_rate_limit_remaining",
+            "legendFormat": "Claude Remaining"
+          }
+        ],
+        "yaxes": [{"format": "short", "label": "Requests Remaining"}]
+      },
+      {
+        "title": "Cache Hit Rate",
+        "type": "stat",
+        "gridPos": {"x": 8, "y": 16, "w": 4, "h": 6},
+        "targets": [
+          {
+            "expr": "cache_hit_rate"
+          }
+        ],
+        "options": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": 0, "color": "red"},
+              {"value": 0.5, "color": "yellow"},
+              {"value": 0.8, "color": "green"}
+            ]
+          }
+        }
+      },
+      {
+        "title": "Circuit Breaker Status",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "circuit_breaker_state{state=\"open\"}",
+            "legendFormat": "{{ breaker }} - OPEN"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": 0, "color": "green"},
+              {"value": 1, "color": "red"}
+            ]
+          }
+        }
+      },
+      {
+        "title": "Worker Resource Usage",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 22, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "avg(rate(container_cpu_usage_seconds_total{pod=~\"review-worker.*\"}[5m])) * 100",
+            "legendFormat": "CPU %"
+          },
+          {
+            "expr": "avg(container_memory_usage_bytes{pod=~\"review-worker.*\"}) / 1024 / 1024",
+            "legendFormat": "Memory MB"
+          }
+        ]
+      },
+      {
+        "title": "Error Rate by Type",
+        "type": "piechart",
+        "gridPos": {"x": 12, "y": 22, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum by (error_type) (rate(review_errors_total[5m]))"
+          }
+        ]
+      }
+    ]
+  }
+}
