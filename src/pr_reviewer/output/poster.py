@@ -21,11 +21,13 @@ class CommentPoster:
         min_severity: Severity = Severity.LOW,
         max_inline_comments: int = 30,
         dry_run: bool = False,
+        min_confidence: float = 0.7,
     ) -> None:
         self._adapter = adapter
         self._min_severity = min_severity
         self._max_inline = max_inline_comments
         self._dry_run = dry_run
+        self._min_confidence = min_confidence
 
     def post(self, session: AgentSession) -> dict:
         """Post all findings and the summary comment for *session*.
@@ -44,9 +46,13 @@ class CommentPoster:
 
         deduplicator = Deduplicator(existing)
 
+        # Filter by confidence first (enterprise: reduce false positives)
+        confidence_filtered = [f for f in session.findings if f.confidence >= self._min_confidence]
+        skipped_confidence = len(session.findings) - len(confidence_filtered)
+
         # Filter by severity
-        filtered = self._filter_by_severity(session.findings)
-        skipped_severity = len(session.findings) - len(filtered)
+        filtered = self._filter_by_severity(confidence_filtered)
+        skipped_severity = len(confidence_filtered) - len(filtered)
 
         # Dedup
         unique = deduplicator.filter_findings(filtered, format_inline_comment)
@@ -104,6 +110,7 @@ class CommentPoster:
         stats = {
             "total_findings": len(session.findings),
             "posted_inline": posted_inline,
+            "skipped_low_confidence": skipped_confidence,
             "skipped_low_severity": skipped_severity,
             "skipped_duplicate": skipped_dup,
             "skipped_cap": skipped_cap,

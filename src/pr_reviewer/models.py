@@ -243,6 +243,7 @@ class AnthropicConfig(BaseModel):
     api_key: str = ""
     model: str = "claude-sonnet-4-6"
     max_tool_calls: int = 60
+    temperature: float = 0.0  # 0.0 = deterministic, 1.0 = creative
 
 
 class GitHubConfig(BaseModel):
@@ -256,6 +257,7 @@ class BitbucketConfig(BaseModel):
 
 class ReviewConfig(BaseModel):
     min_severity_to_post: Severity = Severity.LOW
+    min_confidence_to_post: float = 0.7  # 0.7 = balanced, 0.85 = high precision (fewer false positives)
     max_inline_comments: int = 30
     max_content_length: int = 12000
     cache_ttl_seconds: int = 300

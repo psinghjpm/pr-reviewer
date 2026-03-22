@@ -48,6 +48,10 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             _env("PR_REVIEWER_MAX_TOOL_CALLS")
             or anthropic_raw.get("max_tool_calls", 60)
         ),
+        temperature=float(
+            _env("PR_REVIEWER_TEMPERATURE")
+            or anthropic_raw.get("temperature", 0.0)
+        ),
     )
 
     # --- GitHub ---
@@ -71,6 +75,10 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     )
     review = ReviewConfig(
         min_severity_to_post=Severity(min_sev_str.upper()),
+        min_confidence_to_post=float(
+            _env("PR_REVIEWER_MIN_CONFIDENCE")
+            or review_raw.get("min_confidence_to_post", 0.7)
+        ),
         max_inline_comments=int(
             _env("PR_REVIEWER_MAX_INLINE") or review_raw.get("max_inline_comments", 30)
         ),

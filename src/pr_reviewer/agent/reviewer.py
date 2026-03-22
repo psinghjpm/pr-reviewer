@@ -65,10 +65,17 @@ Check for:
 
 ## Tool Usage Guidelines
 - Use `emit_finding` for EVERY issue found (one call per distinct finding)
-- Only emit findings with confidence >= 0.5
+- **Confidence calibration (CRITICAL for enterprise use):**
+  - confidence >= 0.85: You are certain this is a real defect (visible bug, security flaw, logic error)
+  - confidence 0.7-0.84: Likely issue but needs human verification
+  - confidence < 0.7: Speculative / stylistic concern (will be filtered out)
 - Prefer HIGH/CRITICAL sparingly — reserve for real bugs and security issues
-- Always include a concrete `suggestion` with corrected code when possible
-- Do NOT emit style nitpicks unless they are significant maintainability issues
+- **ALWAYS include actionable suggestions:**
+  - BAD: "Consider error handling" → TOO VAGUE
+  - GOOD: "Wrap in try/catch and log to Logger.error()" → ACTIONABLE
+  - BEST: Include corrected code snippet showing the exact fix
+- Do NOT emit style nitpicks unless they create real maintainability or performance issues
+- For performance issues: include benchmarks or explain the impact (e.g., "O(n²) → O(n)")
 
 ## Output Format
 After all tool calls, you will be asked to produce a JSON summary. Wait for the
@@ -207,6 +214,7 @@ class PRReviewer:
         max_tool_calls: int = 60,
         max_content_length: int = 12_000,
         repo_context: RepoContext | None = None,
+        temperature: float = 0.0,
     ) -> None:
         self._adapter = adapter
         self._client = anthropic.Anthropic(api_key=api_key)
@@ -214,6 +222,7 @@ class PRReviewer:
         self._max_tool_calls = max_tool_calls
         self._max_content_length = max_content_length
         self._repo_context = repo_context
+        self._temperature = temperature
 
     def review(self, pr_id: int | str) -> AgentSession:
         """Run the full agentic review for *pr_id*. Returns a completed AgentSession."""
@@ -243,6 +252,7 @@ class PRReviewer:
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=8192,
+                temperature=self._temperature,
                 system=build_system_prompt(self._repo_context),
                 tools=AGENT_TOOLS,
                 messages=messages,
@@ -320,6 +330,7 @@ class PRReviewer:
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=4096,
+                temperature=self._temperature,
                 system=build_system_prompt(self._repo_context),
                 messages=summary_messages,
             )

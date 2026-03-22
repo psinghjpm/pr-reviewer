@@ -273,6 +273,7 @@ def review(
         max_tool_calls=effective_max_calls,
         max_content_length=cfg.review.max_content_length,
         repo_context=repo_context,
+        temperature=cfg.anthropic.temperature,
     )
 
     console.print(
@@ -300,6 +301,7 @@ def review(
         min_severity=cfg.review.min_severity_to_post,
         max_inline_comments=cfg.review.max_inline_comments,
         dry_run=dry_run,
+        min_confidence=cfg.review.min_confidence_to_post,
     )
     stats = poster.post(session)
 
@@ -307,6 +309,7 @@ def review(
     console.print(
         f"  Findings: {stats['total_findings']} total, "
         f"{stats['posted_inline']} inline posted, "
+        f"{stats['skipped_low_confidence']} low confidence, "
         f"{stats['skipped_duplicate']} deduplicated, "
         f"{stats['skipped_low_severity']} below severity threshold"
     )

@@ -37,6 +37,14 @@ htmlcov/
 # Config (keep example, ignore real config)
 config.yaml
 
+# Test results & determinism tests
+determinism_test_results/
+review_run*.json
+review_run*.txt
+test_determinism.py
+run_determinism_test.py
+run_determinism_test.sh
+
 # OS
 .DS_Store
 Thumbs.db
